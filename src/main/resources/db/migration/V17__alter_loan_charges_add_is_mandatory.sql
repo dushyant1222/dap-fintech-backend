@@ -1,0 +1,2 @@
+ALTER TABLE loan_charges
+ADD COLUMN is_mandatory BOOLEAN DEFAULT FALSE;

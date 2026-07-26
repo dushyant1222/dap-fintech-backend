@@ -1,0 +1,2 @@
+ALTER TABLE loans
+ADD COLUMN tenure_unit VARCHAR(20);
