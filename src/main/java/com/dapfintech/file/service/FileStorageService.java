@@ -10,4 +10,5 @@ public interface FileStorageService {
             MultipartFile file
     );
 
+    String getPresignedUrl(String fileName);
 }
