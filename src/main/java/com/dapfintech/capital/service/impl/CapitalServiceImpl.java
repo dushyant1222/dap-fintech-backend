@@ -193,10 +193,10 @@ public class CapitalServiceImpl implements CapitalService {
         
         for (InternalTransfer t : allTransfers) {
             if (t.getStatus() == TransferStatus.ACCEPTED) {
-                if (t.getReceiver().getRole().getName().equalsIgnoreCase("ADMIN") || t.getReceiver().getRole().getName().equalsIgnoreCase("SUPER_ADMIN")) {
+                if (t.getReceiver().getRole().getRoleName().equalsIgnoreCase("ADMIN") || t.getReceiver().getRole().getRoleName().equalsIgnoreCase("SUPER_ADMIN")) {
                     adminIncomingTransfers = adminIncomingTransfers.add(t.getAmount());
                 }
-                if (t.getSender().getRole().getName().equalsIgnoreCase("ADMIN") || t.getSender().getRole().getName().equalsIgnoreCase("SUPER_ADMIN")) {
+                if (t.getSender().getRole().getRoleName().equalsIgnoreCase("ADMIN") || t.getSender().getRole().getRoleName().equalsIgnoreCase("SUPER_ADMIN")) {
                     adminOutgoingTransfers = adminOutgoingTransfers.add(t.getAmount());
                 }
             }
