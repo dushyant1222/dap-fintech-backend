@@ -37,6 +37,9 @@ import com.dapfintech.loan.entity.LoanCollection;
 import com.dapfintech.loan.enums.LoanStatus;
 import com.dapfintech.loan.repository.LoanCollectionRepository;
 import com.dapfintech.loan.repository.LoanRepository;
+import com.dapfintech.capital.repository.InternalTransferRepository;
+import com.dapfintech.capital.entity.InternalTransfer;
+import com.dapfintech.capital.enums.TransferStatus;
 
 import lombok.RequiredArgsConstructor;
 
@@ -50,6 +53,7 @@ public class CapitalServiceImpl implements CapitalService {
     private final LoanRepository loanRepository;
     private final LoanCollectionRepository loanCollectionRepository;
     private final UserRepository userRepository;
+    private final InternalTransferRepository internalTransferRepository;
 
     private User getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -182,8 +186,23 @@ public class CapitalServiceImpl implements CapitalService {
         if (balanceOnEmployees.compareTo(BigDecimal.ZERO) < 0) {
             balanceOnEmployees = BigDecimal.ZERO;
         }
+        
+        List<InternalTransfer> allTransfers = internalTransferRepository.findAll();
+        BigDecimal adminIncomingTransfers = BigDecimal.ZERO;
+        BigDecimal adminOutgoingTransfers = BigDecimal.ZERO;
+        
+        for (InternalTransfer t : allTransfers) {
+            if (t.getStatus() == TransferStatus.ACCEPTED) {
+                if (t.getReceiver().getRole().getName().equalsIgnoreCase("ADMIN") || t.getReceiver().getRole().getName().equalsIgnoreCase("SUPER_ADMIN")) {
+                    adminIncomingTransfers = adminIncomingTransfers.add(t.getAmount());
+                }
+                if (t.getSender().getRole().getName().equalsIgnoreCase("ADMIN") || t.getSender().getRole().getName().equalsIgnoreCase("SUPER_ADMIN")) {
+                    adminOutgoingTransfers = adminOutgoingTransfers.add(t.getAmount());
+                }
+            }
+        }
 
-        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled).subtract(totalDisbursed.add(totalExpenses));
+        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled).add(adminIncomingTransfers).subtract(totalDisbursed.add(totalExpenses).add(adminOutgoingTransfers));
 
         BigDecimal dynamicMarketBalance = marketBalance.subtract(totalCollections);
         if (dynamicMarketBalance.compareTo(BigDecimal.ZERO) < 0) {
