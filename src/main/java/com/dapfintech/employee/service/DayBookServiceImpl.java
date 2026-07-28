@@ -1,17 +1,21 @@
 package com.dapfintech.employee.service;
 
 import com.dapfintech.employee.dto.DayBookResponse;
+import com.dapfintech.employee.dto.DayBookTransactionRequest;
+import com.dapfintech.employee.dto.UpdateDayBookRequest;
 import com.dapfintech.employee.entity.DayBook;
 import com.dapfintech.employee.enums.DayBookStatus;
 import com.dapfintech.employee.repository.DayBookRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class DayBookServiceImpl implements DayBookService {
@@ -20,6 +24,7 @@ public class DayBookServiceImpl implements DayBookService {
     private DayBookRepository dayBookRepository;
 
     @Override
+    @Transactional
     public DayBookResponse getOrCreateTodayDayBook(UUID employeeId) {
         LocalDate today = LocalDate.now();
         Optional<DayBook> todayDayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today);
@@ -33,7 +38,6 @@ public class DayBookServiceImpl implements DayBookService {
             dayBook.setDate(today);
             dayBook.setStatus(DayBookStatus.OPEN);
             
-            // Set opening balance to most recent past DayBook closing balance (if any)
             List<DayBook> pastBooks = dayBookRepository.findByEmployeeIdOrderByDateDesc(employeeId);
             if (!pastBooks.isEmpty()) {
                 dayBook.setOpeningBalance(pastBooks.get(0).getClosingBalance());
@@ -46,6 +50,110 @@ public class DayBookServiceImpl implements DayBookService {
         }
         
         return mapToResponse(dayBook);
+    }
+    
+    @Override
+    @Transactional
+    public DayBookResponse addTransaction(UUID employeeId, DayBookTransactionRequest request) {
+        LocalDate today = LocalDate.now();
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today)
+                .orElseGet(() -> {
+                    getOrCreateTodayDayBook(employeeId);
+                    return dayBookRepository.findByEmployeeIdAndDate(employeeId, today).get();
+                });
+                
+        if (dayBook.getStatus() != DayBookStatus.OPEN) {
+            throw new RuntimeException("Cannot add transaction to a closed or pending daybook.");
+        }
+        
+        BigDecimal amount = request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO;
+        
+        // Ensure non-null defaults
+        if (dayBook.getSpends() == null) dayBook.setSpends(BigDecimal.ZERO);
+        if (dayBook.getCollections() == null) dayBook.setCollections(BigDecimal.ZERO);
+        if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(BigDecimal.ZERO);
+        if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(BigDecimal.ZERO);
+        if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(BigDecimal.ZERO);
+        if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(BigDecimal.ZERO);
+
+        switch (request.getType().toUpperCase()) {
+            case "SPENDS":
+                dayBook.setSpends(dayBook.getSpends().add(amount));
+                break;
+            case "COLLECTIONS":
+                dayBook.setCollections(dayBook.getCollections().add(amount));
+                break;
+            case "LOANS_DISBURSED":
+                dayBook.setLoansDisbursed(dayBook.getLoansDisbursed().add(amount));
+                break;
+            case "OFFICE_REMITTANCE":
+                dayBook.setOfficeRemittance(dayBook.getOfficeRemittance().add(amount));
+                break;
+            case "INCOMING_TRANSFER":
+                dayBook.setIncomingTransfers(dayBook.getIncomingTransfers().add(amount));
+                break;
+            case "OUTGOING_TRANSFER":
+                dayBook.setOutgoingTransfers(dayBook.getOutgoingTransfers().add(amount));
+                break;
+            default:
+                throw new RuntimeException("Unknown transaction type: " + request.getType());
+        }
+        
+        dayBook.setClosingBalance(calculateClosingBalance(dayBook));
+        dayBook = dayBookRepository.save(dayBook);
+        return mapToResponse(dayBook);
+    }
+    
+    @Override
+    @Transactional
+    public DayBookResponse requestClosure(UUID employeeId) {
+        LocalDate today = LocalDate.now();
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today)
+                .orElseThrow(() -> new RuntimeException("Today's DayBook not found for employee"));
+        
+        if (dayBook.getStatus() != DayBookStatus.OPEN) {
+            throw new RuntimeException("Daybook is already pending closure or closed.");
+        }
+        
+        dayBook.setStatus(DayBookStatus.PENDING_CLOSURE);
+        dayBook = dayBookRepository.save(dayBook);
+        return mapToResponse(dayBook);
+    }
+    
+    @Override
+    @Transactional
+    public DayBookResponse approveClosure(UUID dayBookId) {
+        DayBook dayBook = dayBookRepository.findById(dayBookId)
+                .orElseThrow(() -> new RuntimeException("DayBook not found"));
+        
+        dayBook.setStatus(DayBookStatus.CLOSED);
+        dayBook = dayBookRepository.save(dayBook);
+        return mapToResponse(dayBook);
+    }
+    
+    @Override
+    @Transactional
+    public DayBookResponse updateDayBook(UUID dayBookId, UpdateDayBookRequest request) {
+        DayBook dayBook = dayBookRepository.findById(dayBookId)
+                .orElseThrow(() -> new RuntimeException("DayBook not found"));
+                
+        if (request.getCollections() != null) dayBook.setCollections(request.getCollections());
+        if (request.getSpends() != null) dayBook.setSpends(request.getSpends());
+        if (request.getLoansDisbursed() != null) dayBook.setLoansDisbursed(request.getLoansDisbursed());
+        if (request.getOfficeRemittance() != null) dayBook.setOfficeRemittance(request.getOfficeRemittance());
+        if (request.getIncomingTransfers() != null) dayBook.setIncomingTransfers(request.getIncomingTransfers());
+        if (request.getOutgoingTransfers() != null) dayBook.setOutgoingTransfers(request.getOutgoingTransfers());
+        
+        dayBook.setClosingBalance(calculateClosingBalance(dayBook));
+        dayBook = dayBookRepository.save(dayBook);
+        return mapToResponse(dayBook);
+    }
+    
+    @Override
+    public List<DayBookResponse> getEmployeeDayBooks(UUID employeeId) {
+        return dayBookRepository.findByEmployeeIdOrderByDateDesc(employeeId).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
     
     private BigDecimal calculateClosingBalance(DayBook dayBook) {
