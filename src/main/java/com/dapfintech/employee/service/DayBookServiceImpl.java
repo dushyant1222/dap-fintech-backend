@@ -102,7 +102,7 @@ public class DayBookServiceImpl implements DayBookService {
                 
                 // Trigger internal transfer to admin
                 User employee = userRepository.findById(employeeId).orElse(null);
-                User admin = userRepository.findByRole_RoleName("ADMIN").stream().findFirst().orElse(null);
+                User admin = userRepository.findByRoleRoleName("ADMIN").stream().findFirst().orElse(null);
                 if (employee != null && admin != null) {
                     InternalTransfer transfer = InternalTransfer.builder()
                             .sender(employee)

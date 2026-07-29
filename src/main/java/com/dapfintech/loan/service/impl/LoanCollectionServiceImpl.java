@@ -1083,11 +1083,12 @@ public class LoanCollectionServiceImpl
         // Update DayBook if collected by an employee
         if (loggedInEmployee != null && loggedInEmployee.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             java.time.LocalDate today = java.time.LocalDate.now();
+            final java.math.BigDecimal finalCollectedAmount = collection.getCollectedAmount();
             dayBookRepository.findByEmployeeIdAndDate(loggedInEmployee.getId(), today).ifPresent(dayBook -> {
                 if (dayBook.getCollections() == null) {
                     dayBook.setCollections(java.math.BigDecimal.ZERO);
                 }
-                dayBook.setCollections(dayBook.getCollections().add(collection.getCollectedAmount()));
+                dayBook.setCollections(dayBook.getCollections().add(finalCollectedAmount));
                 
                 // Recalculate closing balance
                 if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(java.math.BigDecimal.ZERO);
