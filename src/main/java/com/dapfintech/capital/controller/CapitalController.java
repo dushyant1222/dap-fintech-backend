@@ -43,6 +43,20 @@ public class CapitalController {
                         .build()
         );
     }
+    
+    @PostMapping("/out")
+    public ResponseEntity<ApiResponse<CapitalIn>> addCapitalOut(
+            @RequestBody CreateCapitalInRequest request
+    ) {
+        CapitalIn capitalOut = capitalService.addCapitalOut(request);
+        return ResponseEntity.ok(
+                ApiResponse.<CapitalIn>builder()
+                        .success(true)
+                        .message("Capital out recorded successfully")
+                        .data(capitalOut)
+                        .build()
+        );
+    }
 
     @GetMapping("/in")
     public ResponseEntity<ApiResponse<List<CapitalIn>>> getAllCapitalIn() {

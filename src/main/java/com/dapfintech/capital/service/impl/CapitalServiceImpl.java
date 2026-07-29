@@ -68,18 +68,32 @@ public class CapitalServiceImpl implements CapitalService {
     @Override
     @Transactional
     public CapitalIn addCapitalIn(CreateCapitalInRequest request) {
-        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("Capital amount must be greater than zero");
-        }
         User user = getAuthenticatedUser();
+
         CapitalIn capitalIn = CapitalIn.builder()
                 .amount(request.getAmount())
                 .capitalDate(LocalDateTime.now())
-                .source(request.getSource() != null && !request.getSource().isBlank() ? request.getSource() : "Owner Capital")
+                .source(request.getSource())
                 .remarks(request.getRemarks())
                 .createdBy(user)
                 .build();
+
         return capitalInRepository.save(capitalIn);
+    }
+    
+    @Override
+    public CapitalIn addCapitalOut(CreateCapitalInRequest request) {
+        User user = getAuthenticatedUser();
+
+        CapitalIn capitalOut = CapitalIn.builder()
+                .amount(request.getAmount().negate())
+                .capitalDate(LocalDateTime.now())
+                .source(request.getSource())
+                .remarks(request.getRemarks())
+                .createdBy(user)
+                .build();
+
+        return capitalInRepository.save(capitalOut);
     }
 
     @Override
@@ -366,6 +380,17 @@ public class CapitalServiceImpl implements CapitalService {
                     .netEarnings(netEarn)
                     .build());
         }
+
+        DateTimeFormatter sortFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy");
+        rows.sort((r1, r2) -> {
+            try {
+                LocalDate d1 = LocalDate.parse(r1.getGroupLabel(), sortFormatter);
+                LocalDate d2 = LocalDate.parse(r2.getGroupLabel(), sortFormatter);
+                return d2.compareTo(d1); // Newest first
+            } catch (Exception e) {
+                return 0;
+            }
+        });
 
         if (rows.isEmpty()) {
             rows.add(PivotRowResponse.builder()

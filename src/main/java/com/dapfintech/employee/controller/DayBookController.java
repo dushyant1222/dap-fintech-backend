@@ -37,6 +37,12 @@ public class DayBookController {
         return ResponseEntity.ok(response);
     }
     
+    @PutMapping("/today/cancel-closure")
+    public ResponseEntity<DayBookResponse> cancelClosure(@PathVariable UUID employeeId) {
+        DayBookResponse response = dayBookService.cancelClosure(employeeId);
+        return ResponseEntity.ok(response);
+    }
+    
     @GetMapping
     public ResponseEntity<List<DayBookResponse>> getEmployeeDayBooks(@PathVariable UUID employeeId) {
         return ResponseEntity.ok(dayBookService.getEmployeeDayBooks(employeeId));

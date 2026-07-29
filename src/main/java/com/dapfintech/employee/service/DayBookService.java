@@ -11,7 +11,9 @@ public interface DayBookService {
     DayBookResponse getOrCreateTodayDayBook(UUID employeeId);
     DayBookResponse addTransaction(UUID employeeId, DayBookTransactionRequest request);
     DayBookResponse requestClosure(UUID employeeId);
+    DayBookResponse cancelClosure(UUID employeeId);
     DayBookResponse approveClosure(UUID dayBookId);
+    DayBookResponse rejectClosure(UUID dayBookId);
     DayBookResponse updateDayBook(UUID dayBookId, UpdateDayBookRequest request);
     List<DayBookResponse> getEmployeeDayBooks(UUID employeeId);
 }

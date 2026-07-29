@@ -23,6 +23,12 @@ public class AdminDayBookController {
         return ResponseEntity.ok(response);
     }
     
+    @PutMapping("/{dayBookId}/reject")
+    public ResponseEntity<DayBookResponse> rejectClosure(@PathVariable UUID dayBookId) {
+        DayBookResponse response = dayBookService.rejectClosure(dayBookId);
+        return ResponseEntity.ok(response);
+    }
+    
     @PutMapping("/{dayBookId}")
     public ResponseEntity<DayBookResponse> updateDayBook(
             @PathVariable UUID dayBookId,

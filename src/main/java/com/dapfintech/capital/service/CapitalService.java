@@ -15,6 +15,8 @@ import com.dapfintech.capital.entity.Expense;
 public interface CapitalService {
 
     CapitalIn addCapitalIn(CreateCapitalInRequest request);
+    
+    CapitalIn addCapitalOut(CreateCapitalInRequest request);
 
     List<CapitalIn> getAllCapitalIn();
 

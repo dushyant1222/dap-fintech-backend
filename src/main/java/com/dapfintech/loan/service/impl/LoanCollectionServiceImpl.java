@@ -36,6 +36,8 @@ import com.dapfintech.market.repository.EmployeeMarketAssignmentRepository;
 import com.dapfintech.notification.service.NotificationService;
 import com.dapfintech.security.service.AccessControlService;
 import com.dapfintech.sync.service.SyncLogService;
+import com.dapfintech.employee.repository.DayBookRepository;
+import com.dapfintech.employee.entity.DayBook;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import com.dapfintech.loan.dto.response.EmployeeCollectionOverviewResponse;
@@ -65,6 +67,7 @@ public class LoanCollectionServiceImpl
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
     private final SyncLogService syncLogService;
+    private final DayBookRepository dayBookRepository;
     
     @Override
     public EmployeeCollectionOverviewResponse
@@ -1075,6 +1078,36 @@ public class LoanCollectionServiceImpl
             loanClosureRepository.save(
                     closure
             );
+        }
+
+        // Update DayBook if collected by an employee
+        if (loggedInEmployee != null && loggedInEmployee.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            dayBookRepository.findByEmployeeIdAndDate(loggedInEmployee.getId(), today).ifPresent(dayBook -> {
+                if (dayBook.getCollections() == null) {
+                    dayBook.setCollections(java.math.BigDecimal.ZERO);
+                }
+                dayBook.setCollections(dayBook.getCollections().add(collection.getCollectedAmount()));
+                
+                // Recalculate closing balance
+                if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(java.math.BigDecimal.ZERO);
+                if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
+                if (dayBook.getSpends() == null) dayBook.setSpends(java.math.BigDecimal.ZERO);
+                if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(java.math.BigDecimal.ZERO);
+                if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
+                if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(java.math.BigDecimal.ZERO);
+                
+                java.math.BigDecimal newClosing = dayBook.getOpeningBalance()
+                        .add(dayBook.getCollections())
+                        .add(dayBook.getIncomingTransfers())
+                        .subtract(dayBook.getSpends())
+                        .subtract(dayBook.getLoansDisbursed())
+                        .subtract(dayBook.getOutgoingTransfers())
+                        .subtract(dayBook.getOfficeRemittance());
+                
+                dayBook.setClosingBalance(newClosing);
+                dayBookRepository.save(dayBook);
+            });
         }
 
         return mapper.toResponse(

@@ -6,6 +6,11 @@ import com.dapfintech.employee.dto.UpdateDayBookRequest;
 import com.dapfintech.employee.entity.DayBook;
 import com.dapfintech.employee.enums.DayBookStatus;
 import com.dapfintech.employee.repository.DayBookRepository;
+import com.dapfintech.auth.entity.User;
+import com.dapfintech.auth.repository.UserRepository;
+import com.dapfintech.capital.entity.InternalTransfer;
+import com.dapfintech.capital.enums.TransferStatus;
+import com.dapfintech.capital.repository.InternalTransferRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +27,12 @@ public class DayBookServiceImpl implements DayBookService {
 
     @Autowired
     private DayBookRepository dayBookRepository;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private InternalTransferRepository internalTransferRepository;
 
     @Override
     @Transactional
@@ -88,6 +99,22 @@ public class DayBookServiceImpl implements DayBookService {
                 break;
             case "OFFICE_REMITTANCE":
                 dayBook.setOfficeRemittance(dayBook.getOfficeRemittance().add(amount));
+                
+                // Trigger internal transfer to admin
+                User employee = userRepository.findById(employeeId).orElse(null);
+                User admin = userRepository.findByRole_RoleName("ADMIN").stream().findFirst().orElse(null);
+                if (employee != null && admin != null) {
+                    InternalTransfer transfer = InternalTransfer.builder()
+                            .sender(employee)
+                            .receiver(admin)
+                            .amount(amount)
+                            .transferDate(java.time.LocalDateTime.now())
+                            .status(TransferStatus.PENDING)
+                            .category("OFFICE_REMITTANCE")
+                            .remarks("Auto-generated office remittance")
+                            .build();
+                    internalTransferRepository.save(transfer);
+                }
                 break;
             case "INCOMING_TRANSFER":
                 dayBook.setIncomingTransfers(dayBook.getIncomingTransfers().add(amount));
@@ -122,11 +149,38 @@ public class DayBookServiceImpl implements DayBookService {
     
     @Override
     @Transactional
+    public DayBookResponse cancelClosure(UUID employeeId) {
+        LocalDate today = LocalDate.now();
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today)
+                .orElseThrow(() -> new RuntimeException("Today's DayBook not found for employee"));
+        
+        if (dayBook.getStatus() != DayBookStatus.PENDING_CLOSURE) {
+            throw new RuntimeException("Daybook is not pending closure.");
+        }
+        
+        dayBook.setStatus(DayBookStatus.OPEN);
+        dayBook = dayBookRepository.save(dayBook);
+        return mapToResponse(dayBook);
+    }
+    
+    @Override
+    @Transactional
     public DayBookResponse approveClosure(UUID dayBookId) {
         DayBook dayBook = dayBookRepository.findById(dayBookId)
                 .orElseThrow(() -> new RuntimeException("DayBook not found"));
         
         dayBook.setStatus(DayBookStatus.CLOSED);
+        dayBook = dayBookRepository.save(dayBook);
+        return mapToResponse(dayBook);
+    }
+    
+    @Override
+    @Transactional
+    public DayBookResponse rejectClosure(UUID dayBookId) {
+        DayBook dayBook = dayBookRepository.findById(dayBookId)
+                .orElseThrow(() -> new RuntimeException("DayBook not found"));
+        
+        dayBook.setStatus(DayBookStatus.OPEN);
         dayBook = dayBookRepository.save(dayBook);
         return mapToResponse(dayBook);
     }
