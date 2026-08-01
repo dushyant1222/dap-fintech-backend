@@ -94,4 +94,18 @@ public class EmployeeController {
 
         );
     }
+
+    @DeleteMapping("/{employeeId}")
+    public ResponseEntity<ApiResponse<Void>> deleteEmployee(@PathVariable UUID employeeId) {
+
+        employeeService.deleteEmployee(employeeId);
+
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Employee deleted successfully")
+                        .data(null)
+                        .build()
+
+        );
+    }
 }

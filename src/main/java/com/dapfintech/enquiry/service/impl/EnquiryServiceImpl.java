@@ -2,6 +2,11 @@ package com.dapfintech.enquiry.service.impl;
 
 import com.dapfintech.auth.entity.User;
 import com.dapfintech.auth.repository.UserRepository;
+import com.dapfintech.customer.dto.request.CreateCustomerRequest;
+import com.dapfintech.customer.dto.response.CustomerResponse;
+import com.dapfintech.customer.enums.CustomerStatus;
+import com.dapfintech.customer.enums.Gender;
+import com.dapfintech.customer.service.CustomerService;
 import com.dapfintech.enquiry.dto.EnquiryRequest;
 import com.dapfintech.enquiry.dto.EnquiryResponse;
 import com.dapfintech.enquiry.dto.EnquiryStatusUpdateRequest;
@@ -20,6 +25,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 @Service
@@ -30,6 +39,7 @@ public class EnquiryServiceImpl implements EnquiryService {
     private final UserRepository userRepository;
     private final MarketRepository marketRepository;
     private final EnquiryMapper enquiryMapper;
+    private final CustomerService customerService;
 
     @Override
     @Transactional
@@ -100,5 +110,90 @@ public class EnquiryServiceImpl implements EnquiryService {
 
         Enquiry savedEnquiry = enquiryRepository.save(enquiry);
         return enquiryMapper.toResponse(savedEnquiry);
+    }
+
+    @Override
+    @Transactional
+    public CustomerResponse convertEnquiryToCustomer(UUID enquiryId, UUID actionById) {
+        Enquiry enquiry = enquiryRepository.findById(enquiryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Enquiry not found"));
+
+        if (enquiry.getStatus() != EnquiryStatus.APPROVED) {
+            throw new IllegalStateException(
+                    "Only APPROVED enquiries can be converted to customers. Current status: " + enquiry.getStatus()
+            );
+        }
+
+        User actionBy = userRepository.findById(actionById)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Split fullName into firstName / lastName
+        String fullName = enquiry.getFullName() != null ? enquiry.getFullName().trim() : "";
+        String firstName;
+        String lastName;
+        int spaceIdx = fullName.indexOf(' ');
+        if (spaceIdx > 0) {
+            firstName = fullName.substring(0, spaceIdx);
+            lastName = fullName.substring(spaceIdx + 1);
+        } else {
+            firstName = fullName;
+            lastName = "";
+        }
+
+        // Convert annual income -> monthly income
+        BigDecimal monthlyIncome = null;
+        if (enquiry.getAnnualIncome() != null && enquiry.getAnnualIncome().compareTo(BigDecimal.ZERO) > 0) {
+            monthlyIncome = enquiry.getAnnualIncome()
+                    .divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP);
+        }
+
+        // Map Gender enum
+        Gender gender = null;
+        if (enquiry.getGender() != null) {
+            try {
+                gender = Gender.valueOf(enquiry.getGender().name());
+            } catch (IllegalArgumentException ignored) {
+                // leave null if gender doesn't map
+            }
+        }
+
+        CreateCustomerRequest customerRequest = new CreateCustomerRequest();
+        customerRequest.setFirstName(firstName);
+        customerRequest.setLastName(lastName.isEmpty() ? null : lastName);
+        customerRequest.setMobileNumber(enquiry.getMobileNumber());
+        customerRequest.setAlternateMobileNumber(enquiry.getAlternateMobile());
+        customerRequest.setEmail(enquiry.getEmail());
+        customerRequest.setDateOfBirth(enquiry.getDob());
+        customerRequest.setGender(gender);
+        customerRequest.setOccupation(enquiry.getOccupation());
+        customerRequest.setMonthlyIncome(monthlyIncome);
+        customerRequest.setStatus(CustomerStatus.ACTIVE);
+        customerRequest.setMarketId(enquiry.getMarket().getId());
+        // Address fields from enquiry
+        if (enquiry.getCurrentAddress() != null) {
+            customerRequest.setCurrentAddress(
+                enquiry.getCurrentAddress().getAddressLine()
+            );
+        }
+        if (enquiry.getPermanentAddress() != null) {
+            customerRequest.setPermanentAddress(
+                enquiry.getPermanentAddress().getAddressLine()
+            );
+        }
+
+        CustomerResponse customerResponse = customerService.createCustomer(customerRequest);
+
+        // Mark enquiry as CONVERTED and add history
+        enquiry.setStatus(EnquiryStatus.CONVERTED);
+        EnquiryHistory history = EnquiryHistory.builder()
+                .previousStatus(EnquiryStatus.APPROVED)
+                .newStatus(EnquiryStatus.CONVERTED)
+                .remarks("Converted to Customer ID: " + customerResponse.getId())
+                .actionBy(actionBy)
+                .build();
+        enquiry.addHistory(history);
+        enquiryRepository.save(enquiry);
+
+        return customerResponse;
     }
 }

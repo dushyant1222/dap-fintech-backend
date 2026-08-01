@@ -1,6 +1,7 @@
 package com.dapfintech.enquiry.controller;
 
 import com.dapfintech.common.response.ApiResponse;
+import com.dapfintech.customer.dto.response.CustomerResponse;
 import com.dapfintech.enquiry.dto.EnquiryRequest;
 import com.dapfintech.enquiry.dto.EnquiryResponse;
 import com.dapfintech.enquiry.dto.EnquiryStatusUpdateRequest;
@@ -69,5 +70,15 @@ public class EnquiryController {
         UUID adminId = securityUtils.getCurrentUserId();
         EnquiryResponse response = enquiryService.updateEnquiryStatus(id, request, adminId);
         return ResponseEntity.ok(ApiResponse.success("Enquiry status updated successfully", response));
+    }
+
+    @PostMapping("/{id}/convert")
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Convert an approved enquiry into a Customer")
+    public ResponseEntity<ApiResponse<CustomerResponse>> convertToCustomer(@PathVariable UUID id) {
+        UUID currentUserId = securityUtils.getCurrentUserId();
+        CustomerResponse response = enquiryService.convertEnquiryToCustomer(id, currentUserId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Enquiry converted to customer successfully", response));
     }
 }

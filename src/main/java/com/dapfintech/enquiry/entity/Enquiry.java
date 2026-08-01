@@ -45,7 +45,7 @@ public class Enquiry extends BaseEntity {
     @Column(length = 100)
     private String email;
 
-    @Column(nullable = false)
+    @Column
     private LocalDate dob;
 
     @Enumerated(EnumType.STRING)
@@ -75,6 +75,9 @@ public class Enquiry extends BaseEntity {
 
     @Column(name = "gps_longitude", nullable = false)
     private Double gpsLongitude;
+
+    @Column(name = "loan_demand_amount", precision = 15, scale = 2)
+    private BigDecimal loanDemandAmount;
 
     @Column(columnDefinition = "TEXT")
     private String remarks;

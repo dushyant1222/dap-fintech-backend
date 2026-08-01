@@ -32,6 +32,7 @@ public class EnquiryMapper {
                 .referenceSource(request.getReferenceSource())
                 .gpsLatitude(request.getGpsLatitude())
                 .gpsLongitude(request.getGpsLongitude())
+                .loanDemandAmount(request.getLoanDemandAmount())
                 .remarks(request.getRemarks())
                 .currentAddress(EnquiryAddress.builder()
                         .addressType(AddressType.CURRENT)
@@ -74,6 +75,7 @@ public class EnquiryMapper {
         response.setReferenceSource(enquiry.getReferenceSource());
         response.setGpsLatitude(enquiry.getGpsLatitude());
         response.setGpsLongitude(enquiry.getGpsLongitude());
+        response.setLoanDemandAmount(enquiry.getLoanDemandAmount());
         response.setRemarks(enquiry.getRemarks());
         response.setStatus(enquiry.getStatus());
         response.setCurrentAddress(enquiry.getCurrentAddress().getAddressLine());

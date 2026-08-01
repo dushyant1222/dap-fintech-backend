@@ -134,6 +134,8 @@ public final class CustomerSpecification {
                         );
             }
 
+
+
             return predicate;
         };
     }

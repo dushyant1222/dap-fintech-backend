@@ -6,5 +6,6 @@ public enum EnquiryStatus {
     UNDER_REVIEW,
     APPROVED,
     REJECTED,
-    CANCELLED
+    CANCELLED,
+    CONVERTED
 }

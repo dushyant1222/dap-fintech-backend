@@ -38,4 +38,5 @@ public class CustomerFilterRequest {
      * by backend access-control rules.
      */
     private UUID marketId;
+
 }

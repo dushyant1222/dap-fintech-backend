@@ -507,16 +507,12 @@ public class MarketServiceImpl
             );
         }
 
-        /*
-         * IMPORTANT:
-         *
-         * Later, when Customer is connected directly
-         * to Market, also check:
-         *
-         * customerRepository.existsByMarketId(marketId)
-         *
-         * If true, block deletion.
-         */
+        boolean hasCustomers = customerRepository.countByMarketId(marketId) > 0;
+        if (hasCustomers) {
+            throw new RuntimeException(
+                    "Cannot delete market because customers are assigned to it"
+            );
+        }
 
         auditLogService.log(
                 "SYSTEM",

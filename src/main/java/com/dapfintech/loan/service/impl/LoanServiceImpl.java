@@ -586,18 +586,11 @@ public class LoanServiceImpl
         }
 
         // -------------------------
-        // REGULAR LOAN - FLAT DIRECT (% on Total Principal)
+        // REGULAR LOAN - FLAT DIRECT (Flat Amount)
         // -------------------------
         else if (request.getInterestType() == InterestType.FLAT_DIRECT) {
 
-            totalInterest =
-                    request.getLoanAmount()
-                            .multiply(request.getInterestRate())
-                            .divide(
-                                    BigDecimal.valueOf(100),
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
+            totalInterest = request.getInterestRate();
 
             totalPayable =
                     request.getLoanAmount()

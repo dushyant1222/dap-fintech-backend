@@ -42,4 +42,8 @@ public interface EmployeeService {
     void deactivateEmployee(
             UUID employeeId
     );
+
+    void deleteEmployee(
+            UUID employeeId
+    );
 }

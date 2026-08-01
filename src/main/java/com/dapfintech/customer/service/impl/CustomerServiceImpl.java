@@ -253,7 +253,7 @@ public class CustomerServiceImpl
 
 
         //----------------------------------------------------------
-        // EMPLOYEE MARKET ACCESS
+        // EMPLOYEE
         //----------------------------------------------------------
 
         EmployeeMarketAssignment assignment =
@@ -266,17 +266,6 @@ public class CustomerServiceImpl
                                         "No market assigned"
                                 )
                         );
-
-        UUID assignedMarketId =
-                assignment
-                        .getMarket()
-                        .getId();
-
-
-        //----------------------------------------------------------
-        // SECURITY:
-        // FORCE EMPLOYEE'S ASSIGNED MARKET
-        //----------------------------------------------------------
 
         CustomerFilterRequest employeeFilter =
                 CustomerFilterRequest
@@ -295,15 +284,10 @@ public class CustomerServiceImpl
                         )
 
                         .marketId(
-                                assignedMarketId
+                                assignment.getMarket().getId()
                         )
 
                         .build();
-
-
-        //----------------------------------------------------------
-        // FETCH EMPLOYEE CUSTOMERS
-        //----------------------------------------------------------
 
         return customerRepository
                 .findAll(
@@ -814,6 +798,9 @@ public class CustomerServiceImpl
                     );
         }
 
+        //----------------------------------------------------------
+        // EMPLOYEE
+        //----------------------------------------------------------
         EmployeeMarketAssignment assignment =
                 assignmentRepository
                         .findFirstByEmployeeIdAndIsActiveTrue(
@@ -885,6 +872,9 @@ public class CustomerServiceImpl
                     );
         }
 
+        //----------------------------------------------------------
+        // EMPLOYEE
+        //----------------------------------------------------------
         EmployeeMarketAssignment assignment =
                 assignmentRepository
                         .findFirstByEmployeeIdAndIsActiveTrue(
@@ -896,21 +886,16 @@ public class CustomerServiceImpl
                                 )
                         );
 
+        UUID marketId = assignment.getMarket().getId();
         return customerRepository
                 .findByMarketIdAndFirstNameContainingIgnoreCaseOrMarketIdAndLastNameContainingIgnoreCaseOrMarketIdAndMobileNumberContaining(
-                        assignment.getMarket().getId(),
+                        marketId,
                         keyword,
-
-                        assignment.getMarket().getId(),
+                        marketId,
                         keyword,
-
-                        assignment.getMarket().getId(),
+                        marketId,
                         keyword,
-
-                        PageRequest.of(
-                                page,
-                                size
-                        )
+                        PageRequest.of(page, size)
                 )
                 .map(
                         customerMapper::toResponse

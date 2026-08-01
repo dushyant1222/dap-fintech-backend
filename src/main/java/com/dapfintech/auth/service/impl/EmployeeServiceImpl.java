@@ -520,5 +520,18 @@ public class EmployeeServiceImpl implements EmployeeService {
 	    );
 	}
 	
-	
+	@Override
+	public void deleteEmployee(UUID employeeId) {
+	    User employee = userRepository.findById(employeeId)
+	            .orElseThrow(() -> new RuntimeException("Employee not found"));
+	    
+	    userRepository.delete(employee);
+	    
+	    auditLogService.log(
+	            "SYSTEM",
+	            "DELETE_EMPLOYEE",
+	            "EMPLOYEE",
+	            employee.getId().toString()
+	    );
+	}
 }

@@ -57,6 +57,8 @@ public interface CustomerRepository
             Pageable pageable
     );
 
+
+
     @Query("""
             SELECT COUNT(c)
             FROM Customer c

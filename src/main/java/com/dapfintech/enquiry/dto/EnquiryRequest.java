@@ -24,13 +24,12 @@ public class EnquiryRequest {
     @Pattern(regexp = "^\\d{10}$", message = "Invalid mobile number format")
     private String mobileNumber;
 
-    @Pattern(regexp = "^\\d{10}$", message = "Invalid alternate mobile format")
+    @Pattern(regexp = "^(\\d{10})?$", message = "Invalid alternate mobile format")
     private String alternateMobile;
 
     @Email(message = "Invalid email format")
     private String email;
 
-    @NotNull(message = "Date of birth is required")
     @Past(message = "Date of birth must be in the past")
     private LocalDate dob;
 
@@ -58,6 +57,9 @@ public class EnquiryRequest {
 
     @NotNull(message = "GPS Longitude is required")
     private Double gpsLongitude;
+
+    @Positive(message = "Loan demand amount must be positive")
+    private BigDecimal loanDemandAmount;
 
     private String remarks;
 

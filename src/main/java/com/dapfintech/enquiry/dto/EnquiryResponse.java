@@ -31,6 +31,7 @@ public class EnquiryResponse {
     private String permanentAddress;
     private Double gpsLatitude;
     private Double gpsLongitude;
+    private BigDecimal loanDemandAmount;
     private String remarks;
     private EnquiryStatus status;
     private UUID employeeId;
