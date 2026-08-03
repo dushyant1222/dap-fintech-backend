@@ -209,6 +209,13 @@ public class DayBookServiceImpl implements DayBookService {
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public DayBookResponse getDayBookByDate(UUID employeeId, LocalDate date) {
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date)
+                .orElseThrow(() -> new RuntimeException("DayBook not found for the given date"));
+        return mapToResponse(dayBook);
+    }
     
     private BigDecimal calculateClosingBalance(DayBook dayBook) {
         if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(BigDecimal.ZERO);

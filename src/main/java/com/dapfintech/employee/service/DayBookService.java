@@ -15,5 +15,6 @@ public interface DayBookService {
     DayBookResponse approveClosure(UUID dayBookId);
     DayBookResponse rejectClosure(UUID dayBookId);
     DayBookResponse updateDayBook(UUID dayBookId, UpdateDayBookRequest request);
+    DayBookResponse getDayBookByDate(UUID employeeId, java.time.LocalDate date);
     List<DayBookResponse> getEmployeeDayBooks(UUID employeeId);
 }

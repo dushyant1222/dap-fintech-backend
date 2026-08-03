@@ -43,6 +43,14 @@ public class DayBookController {
         return ResponseEntity.ok(response);
     }
     
+    @GetMapping("/by-date")
+    public ResponseEntity<DayBookResponse> getDayBookByDate(
+            @PathVariable UUID employeeId,
+            @RequestParam("date") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        DayBookResponse response = dayBookService.getDayBookByDate(employeeId, date);
+        return ResponseEntity.ok(response);
+    }
+    
     @GetMapping
     public ResponseEntity<List<DayBookResponse>> getEmployeeDayBooks(@PathVariable UUID employeeId) {
         return ResponseEntity.ok(dayBookService.getEmployeeDayBooks(employeeId));
