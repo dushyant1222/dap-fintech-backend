@@ -27,6 +27,19 @@ public class LoanController {
 
     private final LoanService loanService;
     
+    @GetMapping("/bureau")
+    public ResponseEntity<ApiResponse<Page<com.dapfintech.loan.dto.response.LoanBureauResponse>>> getLoanBureau(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        "Loan bureau fetched successfully",
+                        loanService.getLoanBureau(page, size)
+                )
+        );
+    }
+    
     
     
     

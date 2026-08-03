@@ -41,6 +41,8 @@ public interface UserRepository
     List<User> findByRoleRoleName(
             String roleName
     );
+    
+    long countByRoleRoleName(String roleName);
 
     Page<User> findByRoleRoleName(
             String roleName,

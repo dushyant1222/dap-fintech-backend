@@ -18,6 +18,9 @@ import lombok.Data;
 public class LoanResponse {
 
     private UUID id;
+    
+    private String loanCode;
+    
     private String customerName;
 
     private String customerCode;

@@ -14,6 +14,7 @@ public class EmployeeMapper {
 
         return EmployeeResponse.builder()
                 .id(user.getId())
+                .employeeCode(user.getEmployeeCode())
                 .fullName(user.getFullName())
                 .mobileNumber(user.getMobileNumber())
                 .email(user.getEmail() != null && !user.getEmail().trim().isEmpty() 

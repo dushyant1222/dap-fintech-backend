@@ -15,15 +15,21 @@ import org.springframework.stereotype.Repository;
 
 import com.dapfintech.loan.entity.Loan;
 import com.dapfintech.loan.enums.LoanStatus;
+import com.dapfintech.loan.enums.LoanType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 @Repository
 public interface LoanRepository
         extends JpaRepository<Loan, UUID>, JpaSpecificationExecutor<Loan> {
 
+    List<Loan> findByLoanTypeAndLoanStatus(LoanType loanType, LoanStatus loanStatus);
+
     List<Loan> findByCustomerId(
             UUID customerId
     );
+    
+    long countByCustomerId(UUID customerId);
+
     Page<Loan> findByLoanStatus(
             LoanStatus loanStatus,
             Pageable pageable

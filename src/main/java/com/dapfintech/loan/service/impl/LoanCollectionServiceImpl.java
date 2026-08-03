@@ -25,6 +25,7 @@ import com.dapfintech.loan.entity.LoanCollection;
 import com.dapfintech.loan.entity.LoanRepaymentSchedule;
 import com.dapfintech.loan.enums.CollectionStatus;
 import com.dapfintech.loan.enums.LoanStatus;
+import com.dapfintech.loan.enums.LoanType;
 import com.dapfintech.loan.enums.RepaymentStatus;
 import com.dapfintech.loan.mapper.LoanCollectionMapper;
 import com.dapfintech.loan.repository.LoanClosureRepository;
@@ -147,6 +148,10 @@ public class LoanCollectionServiceImpl
                                                 item.getLoanId()
                                         )
 
+                                        .loanCode(
+                                                item.getLoanCode()
+                                        )
+
                                         .receiptNumber(
                                                 item.getReceiptNumber()
                                         )
@@ -214,6 +219,7 @@ public class LoanCollectionServiceImpl
                     .stream()
                     .map(schedule -> TodayScheduleResponse.builder()
                             .loanId(schedule.getLoanId())
+                            .loanCode(schedule.getLoanCode())
                             .scheduleId(schedule.getScheduleId())
                             .customerId(schedule.getCustomerId())
                             .customerName(schedule.getCustomerName())
@@ -489,6 +495,10 @@ public class LoanCollectionServiceImpl
 
                                 .loanId(
                                         schedule.getLoanId()
+                                )
+                                
+                                .loanCode(
+                                        schedule.getLoanCode()
                                 )
 
                                 .scheduleId(
@@ -973,6 +983,23 @@ public class LoanCollectionServiceImpl
                     amountToAdjust.subtract(
                             amountToApply
                     );
+        }
+
+        if (loan.getLoanType() == LoanType.EMERGENCY) {
+            if (amountToAdjust.compareTo(loan.getApprovedAmount()) >= 0) {
+                // Collect principal and close loan
+                loan.setLoanStatus(LoanStatus.CLOSED);
+                loanRepository.save(loan);
+
+                LoanClosure closure = LoanClosure.builder()
+                        .loan(loan)
+                        .closureDate(java.time.LocalDateTime.now())
+                        .remarks("Closed via EMI collection (Principal Returned)")
+                        .build();
+                loanClosureRepository.save(closure);
+                
+                amountToAdjust = amountToAdjust.subtract(loan.getApprovedAmount());
+            }
         }
 
         LoanCollection collection =

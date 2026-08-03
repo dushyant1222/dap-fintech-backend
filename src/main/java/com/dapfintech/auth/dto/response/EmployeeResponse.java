@@ -13,6 +13,8 @@ public class EmployeeResponse {
 
     private UUID id;
 
+    private String employeeCode;
+
     private String fullName;
 
     private String mobileNumber;

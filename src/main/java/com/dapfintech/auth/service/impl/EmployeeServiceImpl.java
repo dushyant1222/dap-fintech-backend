@@ -256,6 +256,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
 	    User employee =
 	            User.builder()
+	                    .employeeCode(generateEmployeeCode())
 	                    .fullName(
 	                            request.getFullName().trim()
 	                    )
@@ -533,5 +534,10 @@ public class EmployeeServiceImpl implements EmployeeService {
 	            "EMPLOYEE",
 	            employee.getId().toString()
 	    );
+	}
+
+	private String generateEmployeeCode() {
+	    long count = userRepository.countByRoleRoleName("EMPLOYEE");
+	    return String.format("DAP-EMP-%03d", count + 1);
 	}
 }

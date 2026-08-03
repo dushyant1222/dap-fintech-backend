@@ -18,6 +18,10 @@ public class LoanMapper {
                         loan.getId()
                 )
 
+                .loanCode(
+                        loan.getLoanCode()
+                )
+
                 .customerId(
                         loan.getCustomer().getId()
                 )

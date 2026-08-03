@@ -7,6 +7,8 @@ import java.util.UUID;
 public interface TodayScheduleProjection {
 
     UUID getLoanId();
+    
+    String getLoanCode();
 
     UUID getScheduleId();
 

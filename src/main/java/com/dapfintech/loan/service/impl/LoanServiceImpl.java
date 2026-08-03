@@ -845,9 +845,13 @@ public class LoanServiceImpl
                                 )
                         );
 
+        long customerLoanCount = loanRepository.countByCustomerId(customer.getId());
+        String loanCodeStr = String.format("%s-L%03d", customer.getCustomerCode(), customerLoanCount + 1);
+
         Loan loan =
                 Loan.builder()
                         .customer(customer)
+                        .loanCode(loanCodeStr)
                         .loanType(request.getLoanType())
                         .loanAmount(request.getLoanAmount())
                         .interestRate(request.getInterestRate())
@@ -1228,5 +1232,48 @@ public class LoanServiceImpl
                                 .name()
                 )
                 .build();
+    }
+
+    @Override
+    public Page<com.dapfintech.loan.dto.response.LoanBureauResponse> getLoanBureau(int page, int size) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+        Page<Loan> loans = loanRepository.findByLoanStatus(LoanStatus.ACTIVE, pageable);
+        
+        return loans.map(loan -> {
+            BigDecimal installmentAmount = repaymentScheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())
+                    .stream().findFirst().map(LoanRepaymentSchedule::getInstallmentAmount).orElse(BigDecimal.ZERO);
+            
+            BigDecimal totalCollected = collectionRepository.findByLoanId(loan.getId())
+                    .stream().map(LoanCollection::getCollectedAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            
+            BigDecimal totalAmount = installmentAmount.multiply(BigDecimal.valueOf(loan.getTenure()));
+            BigDecimal totalBalance = totalAmount.subtract(totalCollected);
+            
+            java.time.LocalDateTime startDate = loan.getDisbursementDate();
+            if (startDate == null) {
+                startDate = loan.getApprovalDate();
+            }
+            if (startDate == null) {
+                startDate = java.time.LocalDateTime.now();
+            }
+
+            long daysTillToday = java.time.temporal.ChronoUnit.DAYS.between(startDate.toLocalDate(), java.time.LocalDate.now()) + 1;
+            
+            BigDecimal requiredTillDate = installmentAmount.multiply(BigDecimal.valueOf(daysTillToday));
+            BigDecimal pendingBalance = requiredTillDate.subtract(totalCollected);
+            
+            return com.dapfintech.loan.dto.response.LoanBureauResponse.builder()
+                    .loanId(loan.getId())
+                    .loanCode(loan.getLoanCode())
+                    .customerName(loan.getCustomer().getFirstName() + " " + loan.getCustomer().getLastName())
+                    .repaymentFrequency(loan.getRepaymentFrequency().name())
+                    .tenure(loan.getTenure())
+                    .installmentAmount(installmentAmount)
+                    .totalAmount(totalAmount)
+                    .receivedTillDate(totalCollected)
+                    .totalBalance(totalBalance)
+                    .pendingBalance(pendingBalance)
+                    .build();
+        });
     }
 }

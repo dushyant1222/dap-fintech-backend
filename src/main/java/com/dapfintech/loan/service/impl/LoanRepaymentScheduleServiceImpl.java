@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import com.dapfintech.loan.dto.response.RepaymentScheduleResponse;
 import com.dapfintech.loan.mapper.LoanRepaymentScheduleMapper;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import com.dapfintech.loan.entity.Loan;
 import com.dapfintech.loan.entity.LoanRepaymentSchedule;
 import com.dapfintech.loan.enums.InterestType;
+import com.dapfintech.loan.enums.LoanStatus;
 import com.dapfintech.loan.enums.LoanType;
 import com.dapfintech.loan.enums.RepaymentFrequency;
 import com.dapfintech.loan.enums.RepaymentStatus;
@@ -89,19 +91,14 @@ public class LoanRepaymentScheduleServiceImpl
                         .multiply(
                                 loan.getInterestRate()
                         )
-                        .multiply(
-                                BigDecimal.valueOf(
-                                		loan.getTenure()
-                                )
-                        )
                         .divide(
                                 BigDecimal.valueOf(100),
                                 2,
                                 RoundingMode.HALF_UP
                         );
 
-        BigDecimal totalDue =
-                principal.add(interest);
+        // First day's schedule only contains interest
+        BigDecimal totalDue = interest;
 
         LoanRepaymentSchedule schedule =
                 LoanRepaymentSchedule.builder()
@@ -110,12 +107,9 @@ public class LoanRepaymentScheduleServiceImpl
                         .dueDate(
                                 loan.getDisbursementDate()
                                         .toLocalDate()
-                                        .plusDays(
-                                        		loan.getTenure()
-                                        )
                         )
                         .principalAmount(
-                                principal
+                                BigDecimal.ZERO
                         )
                         .interestAmount(
                                 interest
@@ -480,5 +474,41 @@ public class LoanRepaymentScheduleServiceImpl
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    @Scheduled(cron = "0 1 0 * * ?")
+    public void generateDailyEmergencySchedules() {
+        List<Loan> emergencyLoans = loanRepository.findByLoanTypeAndLoanStatus(LoanType.EMERGENCY, LoanStatus.ACTIVE);
+        LocalDate today = LocalDate.now();
+
+        for (Loan loan : emergencyLoans) {
+            BigDecimal principal = loan.getApprovedAmount();
+            BigDecimal dailyInterest = principal
+                    .multiply(loan.getInterestRate())
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+            List<LoanRepaymentSchedule> existingSchedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
+            int nextInstallment = existingSchedules.size() + 1;
+
+            boolean alreadyGeneratedForToday = existingSchedules.stream()
+                    .anyMatch(s -> s.getDueDate().equals(today));
+
+            if (!alreadyGeneratedForToday) {
+                LoanRepaymentSchedule schedule = LoanRepaymentSchedule.builder()
+                        .loan(loan)
+                        .installmentNumber(nextInstallment)
+                        .dueDate(today)
+                        .principalAmount(BigDecimal.ZERO)
+                        .interestAmount(dailyInterest)
+                        .installmentAmount(dailyInterest)
+                        .dueAmount(dailyInterest)
+                        .paidAmount(BigDecimal.ZERO)
+                        .outstandingAmount(dailyInterest)
+                        .repaymentStatus(RepaymentStatus.PENDING)
+                        .build();
+
+                scheduleRepository.save(schedule);
+            }
+        }
     }
 }

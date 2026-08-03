@@ -12,6 +12,7 @@ import com.dapfintech.loan.dto.response.CalculateEmiResponse;
 import com.dapfintech.loan.dto.response.LoanResponse;
 import com.dapfintech.loan.dto.response.LoanStatisticsResponse;
 import com.dapfintech.loan.dto.response.LoanSummaryResponse;
+import com.dapfintech.loan.dto.response.LoanBureauResponse;
 import com.dapfintech.loan.enums.LoanStatus;
 
 public interface LoanService {
@@ -64,5 +65,10 @@ public interface LoanService {
     );
     LoanSummaryResponse getLoanSummary(
             UUID loanId
+    );
+
+    Page<LoanBureauResponse> getLoanBureau(
+            int page,
+            int size
     );
 }

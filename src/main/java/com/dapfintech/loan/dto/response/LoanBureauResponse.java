@@ -1,7 +1,6 @@
 package com.dapfintech.loan.dto.response;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.UUID;
 
 import lombok.Builder;
@@ -9,26 +8,15 @@ import lombok.Data;
 
 @Data
 @Builder
-public class TodayScheduleResponse {
-
+public class LoanBureauResponse {
     private UUID loanId;
-
     private String loanCode;
-
-    private UUID scheduleId;
-
-    private UUID customerId;
-
     private String customerName;
-
-    private String mobileNumber;
-
-    private Integer installmentNumber;
-
-    private LocalDate dueDate;
-
+    private String repaymentFrequency;
+    private Integer tenure;
     private BigDecimal installmentAmount;
-
-    private BigDecimal outstandingAmount;
-
+    private BigDecimal totalAmount;
+    private BigDecimal receivedTillDate;
+    private BigDecimal totalBalance;
+    private BigDecimal pendingBalance;
 }

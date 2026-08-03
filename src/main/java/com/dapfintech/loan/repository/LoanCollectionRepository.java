@@ -645,6 +645,8 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
 
                 l.id AS loanId,
 
+                l.loan_code AS loanCode,
+
                 lc.receipt_number AS receiptNumber,
 
                 CONCAT(

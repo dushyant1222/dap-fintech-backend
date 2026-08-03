@@ -903,11 +903,7 @@ public class CustomerServiceImpl
     }
 
     private String generateCustomerCode() {
-
-        return "CUS-" +
-                UUID.randomUUID()
-                .toString()
-                .substring(0, 8)
-                .toUpperCase();
+        long count = customerRepository.count();
+        return String.format("DAP-CUST-%03d", count + 1);
     }
 }

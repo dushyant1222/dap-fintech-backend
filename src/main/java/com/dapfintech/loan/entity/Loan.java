@@ -42,6 +42,9 @@ public class Loan extends BaseEntity {
 	    @JoinColumn(name = "customer_id")
 	    private Customer customer;
 
+	    @Column(name = "loan_code", unique = true)
+	    private String loanCode;
+
 	    @Enumerated(EnumType.STRING)
 	    @Column(name = "loan_type")
 	    private LoanType loanType;

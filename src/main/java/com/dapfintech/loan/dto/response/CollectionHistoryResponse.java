@@ -15,6 +15,8 @@ public class CollectionHistoryResponse {
 
     private UUID loanId;
 
+    private String loanCode;
+
     private String receiptNumber;
 
     private String customerName;

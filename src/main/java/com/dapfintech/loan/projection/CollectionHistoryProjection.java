@@ -9,6 +9,8 @@ public interface CollectionHistoryProjection {
     UUID getCollectionId();
 
     UUID getLoanId();
+    
+    String getLoanCode();
 
     String getReceiptNumber();
 
