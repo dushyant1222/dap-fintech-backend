@@ -67,8 +67,7 @@ public class LoanServiceImpl
     private final UserRepository userRepository;
     private final LoanChargeRepository loanChargeRepository;
     private final EmployeeMarketAssignmentRepository assignmentRepository;
-    
-    
+    private final com.dapfintech.notification.service.NotificationService notificationService;
     
     @Override
     public Page<LoanResponse> filterLoans(
@@ -871,6 +870,15 @@ public class LoanServiceImpl
 
         Loan savedLoan =
                 loanRepository.save(loan);
+
+        if (savedLoan != null && savedLoan.getCreatedBy() != null) {
+            notificationService.createNotificationForUser(
+                "Loan Request Created",
+                "Your loan request for ₹" + savedLoan.getLoanAmount() + " has been created.",
+                savedLoan.getCreatedBy()
+            );
+        }
+
         createCharge(
                 savedLoan,
                 ChargeType.PROCESSING_FEE,

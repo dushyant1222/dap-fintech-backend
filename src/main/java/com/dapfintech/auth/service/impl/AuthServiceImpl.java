@@ -68,6 +68,12 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
+        // Save OneSignal Push Subscription ID if provided
+        if (request.getOnesignalId() != null && !request.getOnesignalId().trim().isEmpty()) {
+            user.setOnesignalId(request.getOnesignalId().trim());
+            userRepository.save(user);
+        }
+
         String accessToken =
                 jwtService.generateAccessToken(
                         user.getMobileNumber(),
@@ -140,6 +146,11 @@ public class AuthServiceImpl implements AuthService {
                 "Password Reset",
                 "Password reset for employee " +
                 employee.getFullName()
+        );
+        notificationService.createNotificationForUser(
+                "Password Reset",
+                "Your password has been successfully reset.",
+                employee
         );
         
         auditLogService.log(
@@ -289,6 +300,11 @@ public class AuthServiceImpl implements AuthService {
         notificationService.createNotification(
                 "Password Verification OTP",
                 "Verification code for " + cleanEmail + " is: " + otp
+        );
+        notificationService.createNotificationForUser(
+                "Password Verification OTP",
+                "Your password reset verification code is: " + otp,
+                user
         );
 
         auditLogService.log(

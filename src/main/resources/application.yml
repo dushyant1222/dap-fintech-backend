@@ -54,4 +54,8 @@ cloudflare:
     access-key: ${R2_ACCESS_KEY:dummy}
     secret-key: ${R2_SECRET_KEY:dummy}
     account-id: ${R2_ACCOUNT_ID:dummy}
-    bucket-name: ${R2_BUCKET_NAME:dap-finance}
+    bucket-name: ${R2_BUCKET_NAME:dap-finance}
+
+onesignal:
+  app-id: ${ONESIGNAL_APP_ID:aa8f96d7-58b4-49b8-8a8f-82379be83dc0}
+  rest-api-key: ${ONESIGNAL_REST_API_KEY:os_v2_app_vkhznv2ywre3rcupqi3zx2b5ydhkag6574deqxvk66zdzw2skd65a7xo6xdmb52pbu7v2arhlcr5ikcru6ao4k6qqbkh3jq53kp22ha}

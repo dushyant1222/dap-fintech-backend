@@ -101,6 +101,13 @@ public class LoanApprovalServiceImpl
                         loan.getId() +
                         " has been submitted for approval."
         );
+        if (loan != null && loan.getCreatedBy() != null) {
+            notificationService.createNotificationForUser(
+                "Loan Submitted",
+                "Your loan application has been submitted for approval.",
+                loan.getCreatedBy()
+            );
+        }
 
         /*
          * Audit trail.
@@ -179,6 +186,13 @@ public class LoanApprovalServiceImpl
                 loan.getId() +
                 " has been approved."
         );
+        if (loan != null && loan.getCreatedBy() != null) {
+            notificationService.createNotificationForUser(
+                "Loan Approved",
+                "Congratulations! Your loan application has been approved.",
+                loan.getCreatedBy()
+            );
+        }
         
         auditLogService.log(
                 "SYSTEM",
@@ -229,6 +243,13 @@ public class LoanApprovalServiceImpl
                 loan.getId() +
                 " has been rejected."
         );
+        if (loan != null && loan.getCreatedBy() != null) {
+            notificationService.createNotificationForUser(
+                "Loan Rejected",
+                "Unfortunately, your loan application has been rejected.",
+                loan.getCreatedBy()
+            );
+        }
         
         auditLogService.log(
                 "SYSTEM",
@@ -292,6 +313,13 @@ public class LoanApprovalServiceImpl
                         loan.getId() +
                         " has been resubmitted for approval."
         );
+        if (loan != null && loan.getCreatedBy() != null) {
+            notificationService.createNotificationForUser(
+                "Loan Resubmitted",
+                "Your loan application has been resubmitted for approval.",
+                loan.getCreatedBy()
+            );
+        }
 
         auditLogService.log(
                 "SYSTEM",

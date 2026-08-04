@@ -1055,6 +1055,13 @@ public class LoanCollectionServiceImpl
                         collection.getCollectedAmount() +
                         " received."
         );
+        if (loan != null && loan.getCreatedBy() != null) {
+            notificationService.createNotificationForUser(
+                "Collection Received",
+                "Collection of ₹" + collection.getCollectedAmount() + " received for your loan.",
+                loan.getCreatedBy()
+            );
+        }
 
         String collectorLog = (loggedInEmployee != null && loggedInEmployee.getFullName() != null)
                 ? loggedInEmployee.getFullName() + " (" + (loggedInEmployee.getRole() != null ? loggedInEmployee.getRole().getRoleName() : "Employee") + ")"

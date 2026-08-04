@@ -59,7 +59,8 @@ public class User  extends BaseEntity{
 	@Column(name = "status")
 	private UserStatus status;
 
-
+	@Column(name="onesignal_id")
+	private String onesignalId;
 
 
 }
