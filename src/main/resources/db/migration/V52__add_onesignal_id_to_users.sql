@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN onesignal_id VARCHAR(255);
