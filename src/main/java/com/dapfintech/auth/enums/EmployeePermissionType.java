@@ -32,6 +32,8 @@ public enum EmployeePermissionType {
 
     GPS_REQUIRED,
 
-    CAMERA_REQUIRED
+    CAMERA_REQUIRED,
+
+    CLOSE_LEDGER
 
 }

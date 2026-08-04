@@ -18,6 +18,8 @@ public enum PermissionType {
 
 	WALLET_TRANSFER,
 
-	AUDIT_VIEW
+	AUDIT_VIEW,
+
+	CLOSE_LEDGER
 
 }
