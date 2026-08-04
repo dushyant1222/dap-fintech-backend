@@ -33,6 +33,15 @@ public class DayBookServiceImpl implements DayBookService {
     
     @Autowired
     private InternalTransferRepository internalTransferRepository;
+    
+    @Autowired
+    private com.dapfintech.employee.repository.MarketDayBookRepository marketDayBookRepository;
+    
+    @Autowired
+    private com.dapfintech.market.repository.EmployeeMarketAssignmentRepository assignmentRepository;
+    
+    @Autowired
+    private com.dapfintech.notification.service.NotificationService notificationService;
 
     @Override
     @Transactional
@@ -171,7 +180,83 @@ public class DayBookServiceImpl implements DayBookService {
         
         dayBook.setStatus(DayBookStatus.CLOSED);
         dayBook = dayBookRepository.save(dayBook);
+        
+        checkAndCloseMarketDayBook(dayBook);
+        
         return mapToResponse(dayBook);
+    }
+    
+    private void checkAndCloseMarketDayBook(DayBook closedDayBook) {
+        UUID employeeId = closedDayBook.getEmployeeId();
+        LocalDate today = closedDayBook.getDate();
+        
+        com.dapfintech.market.entity.EmployeeMarketAssignment assignment = 
+            assignmentRepository.findByEmployeeIdAndIsActiveTrue(employeeId).stream().findFirst().orElse(null);
+            
+        if (assignment == null) return;
+        
+        UUID marketId = assignment.getMarket().getId();
+        
+        List<com.dapfintech.market.entity.EmployeeMarketAssignment> marketEmployees = 
+            assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+            
+        boolean allClosed = true;
+        List<DayBook> allDayBooks = new java.util.ArrayList<>();
+        
+        for (com.dapfintech.market.entity.EmployeeMarketAssignment empAssignment : marketEmployees) {
+            UUID empId = empAssignment.getEmployee().getId();
+            if (empId.equals(employeeId)) {
+                allDayBooks.add(closedDayBook);
+                continue;
+            }
+            
+            Optional<DayBook> empDayBookOpt = dayBookRepository.findByEmployeeIdAndDate(empId, today);
+            if (empDayBookOpt.isEmpty() || empDayBookOpt.get().getStatus() != DayBookStatus.CLOSED) {
+                allClosed = false;
+                break;
+            }
+            allDayBooks.add(empDayBookOpt.get());
+        }
+        
+        if (allClosed) {
+            com.dapfintech.employee.entity.MarketDayBook marketDayBook = 
+                marketDayBookRepository.findByMarketIdAndDate(marketId, today)
+                    .orElse(new com.dapfintech.employee.entity.MarketDayBook());
+                    
+            marketDayBook.setMarketId(marketId);
+            marketDayBook.setDate(today);
+            marketDayBook.setStatus(DayBookStatus.CLOSED);
+            
+            BigDecimal tOpen = BigDecimal.ZERO, tColl = BigDecimal.ZERO, tInc = BigDecimal.ZERO, tSpend = BigDecimal.ZERO;
+            BigDecimal tLoan = BigDecimal.ZERO, tOut = BigDecimal.ZERO, tRemit = BigDecimal.ZERO, tClose = BigDecimal.ZERO;
+            
+            for (DayBook db : allDayBooks) {
+                tOpen = tOpen.add(db.getOpeningBalance() != null ? db.getOpeningBalance() : BigDecimal.ZERO);
+                tColl = tColl.add(db.getCollections() != null ? db.getCollections() : BigDecimal.ZERO);
+                tInc = tInc.add(db.getIncomingTransfers() != null ? db.getIncomingTransfers() : BigDecimal.ZERO);
+                tSpend = tSpend.add(db.getSpends() != null ? db.getSpends() : BigDecimal.ZERO);
+                tLoan = tLoan.add(db.getLoansDisbursed() != null ? db.getLoansDisbursed() : BigDecimal.ZERO);
+                tOut = tOut.add(db.getOutgoingTransfers() != null ? db.getOutgoingTransfers() : BigDecimal.ZERO);
+                tRemit = tRemit.add(db.getOfficeRemittance() != null ? db.getOfficeRemittance() : BigDecimal.ZERO);
+                tClose = tClose.add(db.getClosingBalance() != null ? db.getClosingBalance() : BigDecimal.ZERO);
+            }
+            
+            marketDayBook.setTotalOpeningBalance(tOpen);
+            marketDayBook.setTotalCollections(tColl);
+            marketDayBook.setTotalIncomingTransfers(tInc);
+            marketDayBook.setTotalSpends(tSpend);
+            marketDayBook.setTotalLoansDisbursed(tLoan);
+            marketDayBook.setTotalOutgoingTransfers(tOut);
+            marketDayBook.setTotalOfficeRemittance(tRemit);
+            marketDayBook.setTotalClosingBalance(tClose);
+            
+            marketDayBookRepository.save(marketDayBook);
+            
+            notificationService.createNotification(
+                "Market Daybook Closed",
+                "Market " + assignment.getMarket().getMarketName() + " daybook closed for today. Total Collection: Rs. " + tColl
+            );
+        }
     }
     
     @Override
@@ -250,5 +335,17 @@ public class DayBookServiceImpl implements DayBookService {
         response.setClosingBalance(dayBook.getClosingBalance());
         response.setStatus(dayBook.getStatus());
         return response;
+    }
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 0 * * ?") // Midnight
+    @Transactional
+    public void forceClosePendingDayBooks() {
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        List<DayBook> pendingBooks = dayBookRepository.findByDateAndStatusNot(yesterday, DayBookStatus.CLOSED);
+            
+        for (DayBook db : pendingBooks) {
+            db.setStatus(DayBookStatus.CLOSED);
+            dayBookRepository.save(db);
+            checkAndCloseMarketDayBook(db);
+        }
     }
 }
