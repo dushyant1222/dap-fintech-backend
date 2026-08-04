@@ -29,7 +29,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
+import com.dapfintech.notification.service.NotificationService;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ public class EnquiryServiceImpl implements EnquiryService {
     private final MarketRepository marketRepository;
     private final EnquiryMapper enquiryMapper;
     private final CustomerService customerService;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -64,6 +67,19 @@ public class EnquiryServiceImpl implements EnquiryService {
         enquiry.addHistory(history);
 
         Enquiry savedEnquiry = enquiryRepository.save(enquiry);
+        
+        // Notify all ADMIN users
+        try {
+            List<User> admins = userRepository.findByRoleRoleName("ADMIN");
+            String title = "New Enquiry Received";
+            String message = String.format("A new enquiry has been submitted by %s for market %s.", employee.getFullName(), market.getMarketName());
+            for (User admin : admins) {
+                notificationService.createNotificationForUser(title, message, admin);
+            }
+        } catch (Exception e) {
+            // Log but don't fail the transaction if notification fails
+        }
+
         return enquiryMapper.toResponse(savedEnquiry);
     }
 
