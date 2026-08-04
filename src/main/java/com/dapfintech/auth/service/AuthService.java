@@ -33,4 +33,6 @@ public interface AuthService {
     void verifyEmailOtpAndChangePassword(
             VerifyEmailOtpChangePasswordRequest request
     );
+
+    void updatePushSubscriptionId(String userId, String pushSubscriptionId);
 }

@@ -2,6 +2,7 @@ package com.dapfintech.auth.service.impl;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -380,5 +381,20 @@ public class AuthServiceImpl implements AuthService {
         token.setIsRevoked(true);
 
         refreshTokenRepository.save(token);
+    }
+
+    @Override
+    @Transactional
+    public void updatePushSubscriptionId(String userId, String pushSubscriptionId) {
+        if (pushSubscriptionId == null || pushSubscriptionId.trim().isEmpty()) return;
+        try {
+            UUID uid = UUID.fromString(userId);
+            userRepository.findById(uid).ifPresent(user -> {
+                user.setOnesignalId(pushSubscriptionId.trim());
+                userRepository.save(user);
+            });
+        } catch (IllegalArgumentException e) {
+            // Invalid UUID, ignore
+        }
     }
 }

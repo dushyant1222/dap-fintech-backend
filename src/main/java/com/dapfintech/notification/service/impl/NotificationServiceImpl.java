@@ -75,7 +75,9 @@ public class NotificationServiceImpl implements NotificationService {
 
             Map<String, Object> body = new HashMap<>();
             body.put("app_id", oneSignalAppId);
-            body.put("include_player_ids", Collections.singletonList(oneSignalPlayerId));
+            // OneSignal SDK v5 uses Subscription IDs, not legacy Player IDs
+            body.put("include_subscription_ids", Collections.singletonList(oneSignalPlayerId));
+            body.put("target_channel", "push");
             
             Map<String, String> headings = new HashMap<>();
             headings.put("en", title);
