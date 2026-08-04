@@ -66,17 +66,18 @@ public class NotificationServiceImpl implements NotificationService {
         }
 	}
 
-    private void sendOneSignalPush(String title, String message, String oneSignalPlayerId) {
+    private void sendOneSignalPush(String title, String message, String oneSignalSubscriptionId) {
         try {
             String url = "https://onesignal.com/api/v1/notifications";
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Basic " + oneSignalRestApiKey);
+            // os_v2_app_ keys use 'Key ' prefix (NOT 'Basic ')
+            headers.set("Authorization", "Key " + oneSignalRestApiKey);
 
             Map<String, Object> body = new HashMap<>();
             body.put("app_id", oneSignalAppId);
-            // OneSignal SDK v5 uses Subscription IDs, not legacy Player IDs
-            body.put("include_subscription_ids", Collections.singletonList(oneSignalPlayerId));
+            // OneSignal SDK v5 uses Subscription IDs — use include_subscription_ids
+            body.put("include_subscription_ids", Collections.singletonList(oneSignalSubscriptionId));
             body.put("target_channel", "push");
             
             Map<String, String> headings = new HashMap<>();
@@ -87,15 +88,14 @@ public class NotificationServiceImpl implements NotificationService {
             contents.put("en", message);
             body.put("contents", contents);
             
-            // Custom sound identifier corresponding to android/app/src/main/res/raw/sword.mp3
+            // Custom sound: sword.mp3 in res/raw/
             body.put("android_sound", "sword");
-            body.put("android_channel_id", "default");
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
-            restTemplate.postForObject(url, request, String.class);
-            log.info("Push notification sent to OneSignal ID: {}", oneSignalPlayerId);
+            String responseBody = restTemplate.postForObject(url, request, String.class);
+            log.info("[OneSignal] Push sent to subscription: {} | Response: {}", oneSignalSubscriptionId, responseBody);
         } catch (Exception e) {
-            log.error("Failed to send OneSignal push notification: {}", e.getMessage());
+            log.error("[OneSignal] Failed to send push notification to {}: {}", oneSignalSubscriptionId, e.getMessage());
         }
     }
 	
