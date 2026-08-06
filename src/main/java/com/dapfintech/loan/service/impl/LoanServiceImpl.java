@@ -817,6 +817,10 @@ public class LoanServiceImpl
     public LoanResponse createLoan(
             CreateLoanRequest request
     ) {
+        
+        if (loanRepository.existsByCustomerIdAndLoanStatus(request.getCustomerId(), LoanStatus.ACTIVE)) {
+            throw new RuntimeException("Cannot issue a new loan. Customer already has an ACTIVE loan.");
+        }
 
         Customer customer =
                 customerRepository.findById(

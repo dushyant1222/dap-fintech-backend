@@ -30,6 +30,29 @@ public class FileUploadController {
                 .build();
     }
 
+    @GetMapping("/local/{fileName}")
+    public ResponseEntity<org.springframework.core.io.Resource> getLocalFile(@PathVariable String fileName) {
+        try {
+            java.nio.file.Path filePath = java.nio.file.Paths.get("uploads").resolve(fileName).normalize();
+            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
+            
+            if (resource.exists() || resource.isReadable()) {
+                String contentType = java.nio.file.Files.probeContentType(filePath);
+                if (contentType == null) {
+                    contentType = "application/octet-stream";
+                }
+                return ResponseEntity.ok()
+                        .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, contentType)
+                        .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
+                        .body(resource);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @PostMapping("/upload")
     public ResponseEntity<ApiResponse<FileUploadResponse>> uploadFile(
             @RequestParam("file") MultipartFile file
@@ -39,7 +62,7 @@ public class FileUploadController {
         return ResponseEntity.ok(
                 ApiResponse.<FileUploadResponse>builder()
                         .success(true)
-                        .message("File uploaded securely to Cloudflare R2")
+                        .message("File uploaded successfully")
                         .data(response)
                         .build()
         );

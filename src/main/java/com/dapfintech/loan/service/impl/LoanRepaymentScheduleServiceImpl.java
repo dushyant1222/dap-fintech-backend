@@ -148,9 +148,7 @@ public class LoanRepaymentScheduleServiceImpl
         BigDecimal totalInterest;
 
         if (loan.getInterestType() == InterestType.FLAT_DIRECT) {
-            totalInterest = principal
-                    .multiply(loan.getInterestRate())
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            totalInterest = loan.getInterestRate();
         } else if (loan.getInterestType() == InterestType.FLAT_PER_MONTH) {
             BigDecimal months;
             switch (loan.getRepaymentFrequency()) {

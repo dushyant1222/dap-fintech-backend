@@ -29,6 +29,8 @@ public interface LoanRepository
     );
     
     long countByCustomerId(UUID customerId);
+    
+    boolean existsByCustomerIdAndLoanStatus(UUID customerId, LoanStatus loanStatus);
 
     Page<Loan> findByLoanStatus(
             LoanStatus loanStatus,
