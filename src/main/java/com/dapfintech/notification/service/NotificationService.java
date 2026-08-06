@@ -13,6 +13,7 @@ public interface NotificationService {
 	
 	void createNotification(String title, String message);
 	void createNotificationForUser(String title, String message, User targetUser);
+	void notifyAllAdmins(String title, String message);
 	
 	List<NotificationResponse> getAllNotifications();
 	void markAsRead(UUID notificationId);

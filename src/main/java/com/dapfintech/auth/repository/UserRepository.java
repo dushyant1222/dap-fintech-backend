@@ -22,6 +22,10 @@ public interface UserRepository
             String mobileNumber
     );
 
+    List<User> findByOnesignalId(
+            String onesignalId
+    );
+
     Optional<User> findByEmail(
             String email
     );

@@ -20,6 +20,7 @@ import com.dapfintech.notification.entity.Notification;
 import com.dapfintech.notification.repository.NotificationRepository;
 import com.dapfintech.notification.service.NotificationService;
 import com.dapfintech.auth.entity.User;
+import com.dapfintech.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 public class NotificationServiceImpl implements NotificationService {
 	
 	private final NotificationRepository notificationRepository;
+    private final UserRepository userRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${onesignal.app-id}")
@@ -66,6 +68,24 @@ public class NotificationServiceImpl implements NotificationService {
         }
 	}
 
+    @Override
+    public void notifyAllAdmins(String title, String message) {
+        // Log global notification in DB
+        createNotification(title, message);
+        
+        // Push individually to all Admins
+        try {
+            List<User> admins = userRepository.findByRoleRoleName("ADMIN");
+            for (User admin : admins) {
+                if (admin.getOnesignalId() != null && !admin.getOnesignalId().trim().isEmpty()) {
+                    sendOneSignalPush(title, message, admin.getOnesignalId());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to notify admins: {}", e.getMessage());
+        }
+    }
+
     private void sendOneSignalPush(String title, String message, String oneSignalSubscriptionId) {
         try {
             String url = "https://onesignal.com/api/v1/notifications";
@@ -90,6 +110,7 @@ public class NotificationServiceImpl implements NotificationService {
             
             // Custom sound: sword.mp3 in res/raw/
             body.put("android_sound", "sword");
+            body.put("android_channel_id", "sword_channel");
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
             String responseBody = restTemplate.postForObject(url, request, String.class);

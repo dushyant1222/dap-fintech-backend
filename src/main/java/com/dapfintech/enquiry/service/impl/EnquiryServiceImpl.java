@@ -69,16 +69,9 @@ public class EnquiryServiceImpl implements EnquiryService {
         Enquiry savedEnquiry = enquiryRepository.save(enquiry);
         
         // Notify all ADMIN users
-        try {
-            List<User> admins = userRepository.findByRoleRoleName("ADMIN");
-            String title = "New Enquiry Received";
-            String message = String.format("A new enquiry has been submitted by %s for market %s.", employee.getFullName(), market.getMarketName());
-            for (User admin : admins) {
-                notificationService.createNotificationForUser(title, message, admin);
-            }
-        } catch (Exception e) {
-            // Log but don't fail the transaction if notification fails
-        }
+        String title = "New Enquiry Received";
+        String message = String.format("A new enquiry has been submitted by %s for market %s.", employee.getFullName(), market.getMarketName());
+        notificationService.notifyAllAdmins(title, message);
 
         return enquiryMapper.toResponse(savedEnquiry);
     }
@@ -125,6 +118,15 @@ public class EnquiryServiceImpl implements EnquiryService {
         enquiry.addHistory(history);
 
         Enquiry savedEnquiry = enquiryRepository.save(enquiry);
+        
+        if (savedEnquiry.getEmployee() != null) {
+            notificationService.createNotificationForUser(
+                "Enquiry Status Updated",
+                "Your enquiry for " + savedEnquiry.getFullName() + " is now " + request.getStatus().name(),
+                savedEnquiry.getEmployee()
+            );
+        }
+        
         return enquiryMapper.toResponse(savedEnquiry);
     }
 

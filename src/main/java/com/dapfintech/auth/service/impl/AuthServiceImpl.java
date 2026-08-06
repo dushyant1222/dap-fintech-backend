@@ -71,7 +71,16 @@ public class AuthServiceImpl implements AuthService {
 
         // Save OneSignal Push Subscription ID if provided
         if (request.getOnesignalId() != null && !request.getOnesignalId().trim().isEmpty()) {
-            user.setOnesignalId(request.getOnesignalId().trim());
+            String token = request.getOnesignalId().trim();
+            // Clear from other users to bind specifically to this session
+            java.util.List<User> usersWithToken = userRepository.findByOnesignalId(token);
+            for (User u : usersWithToken) {
+                if (!u.getId().equals(user.getId())) {
+                    u.setOnesignalId(null);
+                    userRepository.save(u);
+                }
+            }
+            user.setOnesignalId(token);
             userRepository.save(user);
         }
 
@@ -378,6 +387,13 @@ public class AuthServiceImpl implements AuthService {
                                 )
                         );
 
+        // Clear device token on logout to stop receiving notifications on this device
+        User user = token.getUser();
+        if (user != null) {
+            user.setOnesignalId(null);
+            userRepository.save(user);
+        }
+
         token.setIsRevoked(true);
 
         refreshTokenRepository.save(token);
@@ -389,8 +405,19 @@ public class AuthServiceImpl implements AuthService {
         if (pushSubscriptionId == null || pushSubscriptionId.trim().isEmpty()) return;
         try {
             UUID uid = UUID.fromString(userId);
+            String token = pushSubscriptionId.trim();
+            
+            // Clear from other users
+            java.util.List<User> usersWithToken = userRepository.findByOnesignalId(token);
+            for (User u : usersWithToken) {
+                if (!u.getId().equals(uid)) {
+                    u.setOnesignalId(null);
+                    userRepository.save(u);
+                }
+            }
+            
             userRepository.findById(uid).ifPresent(user -> {
-                user.setOnesignalId(pushSubscriptionId.trim());
+                user.setOnesignalId(token);
                 userRepository.save(user);
             });
         } catch (IllegalArgumentException e) {

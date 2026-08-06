@@ -95,7 +95,7 @@ public class LoanApprovalServiceImpl
         /*
          * Notification for admin.
          */
-        notificationService.createNotification(
+        notificationService.notifyAllAdmins(
                 "Loan Submitted for Approval",
                 "Loan " +
                         loan.getId() +
@@ -180,7 +180,7 @@ public class LoanApprovalServiceImpl
                         .build();
 
         loanApprovalRepository.save(approval);
-        notificationService.createNotification(
+        notificationService.notifyAllAdmins(
                 "Loan Approved",
                 "Loan " +
                 loan.getId() +
@@ -237,7 +237,7 @@ public class LoanApprovalServiceImpl
                         .build();
 
         loanApprovalRepository.save(approval);
-        notificationService.createNotification(
+        notificationService.notifyAllAdmins(
                 "Loan Rejected",
                 "Loan " +
                 loan.getId() +
@@ -307,7 +307,7 @@ public class LoanApprovalServiceImpl
 
         loanApprovalRepository.save(approval);
 
-        notificationService.createNotification(
+        notificationService.notifyAllAdmins(
                 "Loan Resubmitted for Approval",
                 "Loan " +
                         loan.getId() +
