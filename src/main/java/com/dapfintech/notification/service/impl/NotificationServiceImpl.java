@@ -110,7 +110,7 @@ public class NotificationServiceImpl implements NotificationService {
             
             // Custom sound: sword.mp3 in res/raw/
             body.put("android_sound", "sword");
-            body.put("android_channel_id", "sword_channel");
+            body.put("existing_android_channel_id", "sword_channel");
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
             String responseBody = restTemplate.postForObject(url, request, String.class);
