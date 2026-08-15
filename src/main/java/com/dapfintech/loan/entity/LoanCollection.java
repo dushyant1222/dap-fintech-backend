@@ -11,6 +11,7 @@ import com.dapfintech.loan.enums.CollectionStatus;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
@@ -18,6 +19,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
 import lombok.*;
 
@@ -34,11 +36,11 @@ public class LoanCollection extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "loan_id")
     private Loan loan;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "repayment_schedule_id")
     private LoanRepaymentSchedule repaymentSchedule;
 
@@ -55,7 +57,7 @@ public class LoanCollection extends BaseEntity {
     @Column(name = "collection_mode")
     private CollectionMode collectionMode;
     
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "collected_by")
     private User collectedBy;
     
@@ -72,3 +74,4 @@ public class LoanCollection extends BaseEntity {
 
     private String remarks;
 }
+

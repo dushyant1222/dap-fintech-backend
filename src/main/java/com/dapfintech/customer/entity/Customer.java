@@ -77,7 +77,7 @@ public class Customer extends BaseEntity {
     @Column(name="status")
     private CustomerStatus status;
     
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "market_id")
     private Market market;
     
@@ -97,3 +97,4 @@ public class Customer extends BaseEntity {
     private UUID deletedBy;
 	
 }
+
