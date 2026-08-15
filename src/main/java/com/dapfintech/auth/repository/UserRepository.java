@@ -8,6 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.dapfintech.auth.entity.User;
@@ -60,4 +62,12 @@ public interface UserRepository
 	        UUID id,
 	        String roleName
 	);
+
+    @Query(value = """
+            SELECT * FROM users
+            WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email))
+               OR LOWER(CONCAT(mobile_number, '@dapfintech.com')) = LOWER(TRIM(:email))
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<User> findByEmailOrMobileEmail(@Param("email") String email);
 }

@@ -725,6 +725,18 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
             @Param("employeeId") UUID employeeId
     );
     
-    
-    
+
+    @Query(value = """
+            SELECT COALESCE(SUM(collected_amount), 0)
+            FROM loan_collections
+            """, nativeQuery = true)
+    BigDecimal getTotalCollections();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(collected_amount), 0)
+            FROM loan_collections
+            WHERE loan_id = :loanId
+            """, nativeQuery = true)
+    BigDecimal getSumCollectedByLoan(@Param("loanId") UUID loanId);
+
 }

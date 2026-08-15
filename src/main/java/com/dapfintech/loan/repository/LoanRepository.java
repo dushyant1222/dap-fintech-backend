@@ -119,4 +119,64 @@ public interface LoanRepository
     		      com.dapfintech.loan.enums.LoanStatus.ACTIVE
     		""")
     		BigDecimal getTotalLoanPortfolio();
-}
+
+    // ── Dashboard aggregate queries (replaces findAll() loops) ──────────────
+
+    @Query(value = """
+            SELECT COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            FROM loans l
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            """, nativeQuery = true)
+    BigDecimal getTotalDisbursedPrincipal();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            FROM loans l
+            WHERE l.loan_status IN ('ACTIVE','APPROVED')
+            """, nativeQuery = true)
+    BigDecimal getMarketBalance();
+
+    @Query(value = """
+            SELECT l.loan_type, l.repayment_frequency, COUNT(*)
+            FROM loans l
+            WHERE l.loan_status IN ('ACTIVE','APPROVED')
+            GROUP BY l.loan_type, l.repayment_frequency
+            """, nativeQuery = true)
+    List<Object[]> getLoanTypeAndFrequencyCounts();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.installment_amount), 0) - COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            HAVING COALESCE(SUM(s.installment_amount), 0) > COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            """, nativeQuery = true)
+    BigDecimal getTotalInterestExpected();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.interest_amount), 0)
+            FROM loan_repayment_schedules s
+            WHERE s.repayment_status = 'PAID'
+            """, nativeQuery = true)
+    BigDecimal getTotalInterestCollected();
+}

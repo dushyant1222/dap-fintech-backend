@@ -141,63 +141,46 @@ public class EmployeePermissionServiceImpl
             );
         }
 
-        for (UpdateEmployeePermissionItemRequest item
-                : request.getPermissions()) {
+        List<Permission> allPermissions = permissionRepository.findAll();
+        Map<UUID, Permission> permissionMap = new HashMap<>();
+        for (Permission p : allPermissions) {
+            permissionMap.put(p.getId(), p);
+        }
+
+        List<EmployeePermission> existingPermissions = employeePermissionRepository.findByEmployeeId(employeeId);
+        Map<UUID, EmployeePermission> existingMap = new HashMap<>();
+        for (EmployeePermission ep : existingPermissions) {
+            existingMap.put(ep.getPermission().getId(), ep);
+        }
+
+        List<EmployeePermission> toSave = new java.util.ArrayList<>();
+
+        for (UpdateEmployeePermissionItemRequest item : request.getPermissions()) {
 
             if (item.getPermissionId() == null) {
-
-                throw new RuntimeException(
-                        "Permission ID is required"
-                );
+                throw new RuntimeException("Permission ID is required");
             }
 
-            Permission permission =
-                    permissionRepository
-                            .findById(
-                                    item.getPermissionId()
-                            )
-                            .orElseThrow(
-                                    () -> new RuntimeException(
-                                            "Permission not found: "
-                                                    + item.getPermissionId()
-                                    )
-                            );
+            Permission permission = permissionMap.get(item.getPermissionId());
+            if (permission == null) {
+                throw new RuntimeException("Permission not found: " + item.getPermissionId());
+            }
 
-            EmployeePermission employeePermission =
-                    employeePermissionRepository
-                            .findByEmployeeIdAndPermissionId(
-                                    employeeId,
-                                    permission.getId()
-                            )
-                            .orElseGet(
-                                    () -> EmployeePermission
-                                            .builder()
+            EmployeePermission employeePermission = existingMap.get(permission.getId());
+            if (employeePermission == null) {
+                employeePermission = EmployeePermission.builder()
+                        .employee(employee)
+                        .permission(permission)
+                        .allowed(false)
+                        .build();
+            }
 
-                                            .employee(
-                                                    employee
-                                            )
-
-                                            .permission(
-                                                    permission
-                                            )
-
-                                            .allowed(
-                                                    false
-                                            )
-
-                                            .build()
-                            );
-
-            employeePermission.setAllowed(
-                    Boolean.TRUE.equals(
-                            item.getAllowed()
-                    )
-            );
-
-            employeePermissionRepository.save(
-                    employeePermission
-            );
+            employeePermission.setAllowed(Boolean.TRUE.equals(item.getAllowed()));
+            toSave.add(employeePermission);
         }
+        
+        employeePermissionRepository.saveAll(toSave);
+
         auditLogService.logEmployeeActivity(
                 employee.getId(),
                 employee.getFullName(),

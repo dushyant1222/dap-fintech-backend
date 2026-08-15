@@ -1,6 +1,7 @@
 package com.dapfintech.loan.service.impl;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -930,60 +931,37 @@ public class LoanCollectionServiceImpl
         BigDecimal amountToAdjust =
                 requestedAmount;
 
-        for (LoanRepaymentSchedule schedule
-                : unpaidSchedules) {
+        List<LoanRepaymentSchedule> schedulesToSave = new ArrayList<>();
 
-            if (amountToAdjust.compareTo(
-                    BigDecimal.ZERO
-            ) <= 0) {
+        for (LoanRepaymentSchedule schedule : unpaidSchedules) {
+
+            if (amountToAdjust.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
 
-            BigDecimal outstanding =
-                    schedule.getOutstandingAmount();
+            BigDecimal outstanding = schedule.getOutstandingAmount();
 
-            if (outstanding == null ||
-                    outstanding.compareTo(
-                            BigDecimal.ZERO
-                    ) <= 0) {
-
+            if (outstanding == null || outstanding.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
 
             BigDecimal amountToApply = amountToAdjust.min(outstanding);
 
-            BigDecimal currentPaidAmount =
-                    schedule.getPaidAmount() == null
-                            ? BigDecimal.ZERO
-                            : schedule.getPaidAmount();
+            BigDecimal currentPaidAmount = schedule.getPaidAmount() == null ? BigDecimal.ZERO : schedule.getPaidAmount();
 
-            schedule.setPaidAmount(
-                    currentPaidAmount.add(
-                            amountToApply
-                    )
-            );
-
-            schedule.setOutstandingAmount(
-                    outstanding.subtract(
-                            amountToApply
-                    )
-            );
+            schedule.setPaidAmount(currentPaidAmount.add(amountToApply));
+            schedule.setOutstandingAmount(outstanding.subtract(amountToApply));
 
             if (schedule.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-                schedule.setRepaymentStatus(
-                        RepaymentStatus.PAID
-                );
+                schedule.setRepaymentStatus(RepaymentStatus.PAID);
             }
 
-            scheduleRepository.save(
-                    schedule
-            );
-
-            amountToAdjust =
-                    amountToAdjust.subtract(
-                            amountToApply
-                    );
+            schedulesToSave.add(schedule);
+            amountToAdjust = amountToAdjust.subtract(amountToApply);
         }
+        
+        scheduleRepository.saveAll(schedulesToSave);
+
 
         if (loan.getLoanType() == LoanType.EMERGENCY) {
             if (amountToAdjust.compareTo(loan.getApprovedAmount()) >= 0) {
@@ -1076,17 +1054,9 @@ public class LoanCollectionServiceImpl
                 collection.getId().toString()
         );
 
-        boolean allPaid =
-                scheduleRepository
-                        .findByLoanIdOrderByInstallmentNumberAsc(
-                                loan.getId()
-                        )
-                        .stream()
-                        .allMatch(
-                                schedule ->
-                                        schedule.getRepaymentStatus()
-                                                == RepaymentStatus.PAID
-                        );
+        // Avoid double fetch: Just check if outstanding is zero using our aggregate query or the list we already fetched
+        BigDecimal totalOutstanding = scheduleRepository.getSumOutstandingByLoan(loan.getId());
+        boolean allPaid = (totalOutstanding == null || totalOutstanding.compareTo(BigDecimal.ZERO) <= 0);
 
         if (allPaid) {
 

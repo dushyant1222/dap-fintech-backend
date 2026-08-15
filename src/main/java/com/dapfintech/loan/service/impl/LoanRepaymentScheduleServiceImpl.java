@@ -226,6 +226,8 @@ public class LoanRepaymentScheduleServiceImpl
                         RoundingMode.HALF_UP
                 );
 
+        List<LoanRepaymentSchedule> schedules = new ArrayList<>();
+
         for (int i = 1; i <= tenure; i++) {
 
             LoanRepaymentSchedule schedule =
@@ -263,10 +265,10 @@ public class LoanRepaymentScheduleServiceImpl
                             )
                             .build();
 
-            scheduleRepository.save(
-                    schedule
-            );
+            schedules.add(schedule);
         }
+        // Single batch insert instead of N individual INSERTs
+        scheduleRepository.saveAll(schedules);
     }
     
     private void generateRegularReducingSchedule(
@@ -361,6 +363,8 @@ public class LoanRepaymentScheduleServiceImpl
         BigDecimal outstanding =
                 principal;
 
+        List<LoanRepaymentSchedule> schedules = new ArrayList<>();
+
         for (int i = 1; i <= tenure; i++) {
 
             BigDecimal interest =
@@ -424,10 +428,10 @@ public class LoanRepaymentScheduleServiceImpl
                             )
                             .build();
 
-            scheduleRepository.save(
-                    schedule
-            );
+            schedules.add(schedule);
         }
+        // Single batch insert instead of N individual INSERTs
+        scheduleRepository.saveAll(schedules);
     }
     
     private LocalDate getDueDate(

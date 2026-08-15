@@ -1192,35 +1192,11 @@ public class LoanServiceImpl
                         )
                 );
 
-        BigDecimal totalCollected =
-                collectionRepository
-                        .findByLoanId(
-                                loanId
-                        )
-                        .stream()
-                        .map(
-                                LoanCollection
-                                        ::getCollectedAmount
-                        )
-                        .reduce(
-                                BigDecimal.ZERO,
-                                BigDecimal::add
-                        );
+        BigDecimal totalCollected = collectionRepository.getSumCollectedByLoan(loanId);
+        if (totalCollected == null) totalCollected = BigDecimal.ZERO;
 
-        BigDecimal outstandingAmount =
-                repaymentScheduleRepository
-                        .findByLoanIdOrderByInstallmentNumberAsc(
-                                loanId
-                        )
-                        .stream()
-                        .map(
-                                LoanRepaymentSchedule
-                                        ::getOutstandingAmount
-                        )
-                        .reduce(
-                                BigDecimal.ZERO,
-                                BigDecimal::add
-                        );
+        BigDecimal outstandingAmount = repaymentScheduleRepository.getSumOutstandingByLoan(loanId);
+        if (outstandingAmount == null) outstandingAmount = BigDecimal.ZERO;
 
         return LoanSummaryResponse
                 .builder()
@@ -1252,11 +1228,11 @@ public class LoanServiceImpl
         Page<Loan> loans = loanRepository.findByLoanStatus(LoanStatus.ACTIVE, pageable);
         
         return loans.map(loan -> {
-            BigDecimal installmentAmount = repaymentScheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())
-                    .stream().findFirst().map(LoanRepaymentSchedule::getInstallmentAmount).orElse(BigDecimal.ZERO);
+            BigDecimal installmentAmount = repaymentScheduleRepository.getFirstInstallmentAmountByLoan(loan.getId());
+            if (installmentAmount == null) installmentAmount = BigDecimal.ZERO;
             
-            BigDecimal totalCollected = collectionRepository.findByLoanId(loan.getId())
-                    .stream().map(LoanCollection::getCollectedAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal totalCollected = collectionRepository.getSumCollectedByLoan(loan.getId());
+            if (totalCollected == null) totalCollected = BigDecimal.ZERO;
             
             BigDecimal totalAmount = installmentAmount.multiply(BigDecimal.valueOf(loan.getTenure()));
             BigDecimal totalBalance = totalAmount.subtract(totalCollected);

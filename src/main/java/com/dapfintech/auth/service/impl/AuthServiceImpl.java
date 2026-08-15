@@ -290,12 +290,8 @@ public class AuthServiceImpl implements AuthService {
 
         List<User> usersWithEmail = userRepository.findAllByEmailIgnoreCase(cleanEmail);
         User user = usersWithEmail.isEmpty()
-                ? userRepository.findAll().stream().filter(u -> {
-                    String uEmail = u.getEmail() != null && !u.getEmail().trim().isEmpty() 
-                            ? u.getEmail().trim().toLowerCase() 
-                            : (u.getFullName() != null ? u.getFullName().toLowerCase().replaceAll("[^a-z0-9]", "") + "@dapfintech.com" : "");
-                    return uEmail.equals(cleanEmail) || (u.getMobileNumber() + "@dapfintech.com").equals(cleanEmail);
-                }).findFirst().orElseThrow(() -> new RuntimeException("No user found with registered email: " + request.getEmail()))
+                ? userRepository.findByEmailOrMobileEmail(cleanEmail)
+                        .orElseThrow(() -> new RuntimeException("No user found with registered email: " + request.getEmail()))
                 : usersWithEmail.get(0);
 
         String otp = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
@@ -346,12 +342,8 @@ public class AuthServiceImpl implements AuthService {
 
         List<User> usersWithEmail = userRepository.findAllByEmailIgnoreCase(cleanEmail);
         User user = usersWithEmail.isEmpty()
-                ? userRepository.findAll().stream().filter(u -> {
-                    String uEmail = u.getEmail() != null && !u.getEmail().trim().isEmpty() 
-                            ? u.getEmail().trim().toLowerCase() 
-                            : (u.getFullName() != null ? u.getFullName().toLowerCase().replaceAll("[^a-z0-9]", "") + "@dapfintech.com" : "");
-                    return uEmail.equals(cleanEmail) || (u.getMobileNumber() + "@dapfintech.com").equals(cleanEmail);
-                }).findFirst().orElseThrow(() -> new RuntimeException("No user found with email: " + request.getEmail()))
+                ? userRepository.findByEmailOrMobileEmail(cleanEmail)
+                        .orElseThrow(() -> new RuntimeException("No user found with email: " + request.getEmail()))
                 : usersWithEmail.get(0);
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword().trim()));

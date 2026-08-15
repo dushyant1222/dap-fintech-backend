@@ -21,25 +21,12 @@ import com.dapfintech.loan.repository.LoanRepository;
 import com.dapfintech.report.projection.TopCollectorProjection;
 import com.dapfintech.auth.repository.UserRepository;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
 import com.dapfintech.capital.repository.CapitalInRepository;
 import com.dapfintech.capital.repository.CashSettlementRepository;
 import com.dapfintech.capital.repository.ExpenseRepository;
 import com.dapfintech.dashboard.dto.response.BusinessGrowthResponse;
-import com.dapfintech.loan.entity.Loan;
-import com.dapfintech.loan.entity.LoanCharge;
-import com.dapfintech.loan.entity.LoanCollection;
-import com.dapfintech.loan.entity.LoanRepaymentSchedule;
-import com.dapfintech.loan.enums.ChargeType;
-import com.dapfintech.loan.enums.LoanType;
-import com.dapfintech.loan.enums.RepaymentFrequency;
 import com.dapfintech.loan.repository.LoanChargeRepository;
-import com.dapfintech.loan.service.LoanPenaltyService;
-import com.dapfintech.loan.dto.response.LoanPenaltySummaryResponse;
 
 import lombok.RequiredArgsConstructor;
 
@@ -52,11 +39,9 @@ public class AdminDashboardServiceImpl
 
     private final LoanRepository loanRepository;
 
-    private final LoanCollectionRepository
-            collectionRepository;
+    private final LoanCollectionRepository collectionRepository;
 
-    private final LoanRepaymentScheduleRepository
-            scheduleRepository;
+    private final LoanRepaymentScheduleRepository scheduleRepository;
 
     private final UserRepository userRepository;
 
@@ -64,41 +49,24 @@ public class AdminDashboardServiceImpl
     private final ExpenseRepository expenseRepository;
     private final CashSettlementRepository cashSettlementRepository;
     private final LoanChargeRepository loanChargeRepository;
-    private final LoanPenaltyService loanPenaltyService;
 
     @Override
-    public List<MonthlyCollectionResponse>
-    getMonthlyCollection() {
-
+    public List<MonthlyCollectionResponse> getMonthlyCollection() {
         return collectionRepository
-
                 .getMonthlyCollection()
-
                 .stream()
-
                 .map(this::mapMonthlyCollection)
-
                 .toList();
-
     }
 
-    private MonthlyCollectionResponse
-    mapMonthlyCollection(
-            MonthlyCollectionProjection projection
-    ) {
-
+    private MonthlyCollectionResponse mapMonthlyCollection(
+            MonthlyCollectionProjection projection) {
         return new MonthlyCollectionResponse(
-
                 projection.getMonthNumber(),
-
                 projection.getMonthName(),
-
-                projection.getAmount()
-
-        );
-
+                projection.getAmount());
     }
-    
+
     @Override
     public AdminDashboardResponse getDashboard() {
 
@@ -111,107 +79,82 @@ public class AdminDashboardServiceImpl
 
                 .activeEmployees(
                         userRepository.countByStatus(
-                                UserStatus.ACTIVE
-                        )
-                )
+                                UserStatus.ACTIVE))
 
                 //---------------- Customers ----------------
 
                 .totalCustomers(
-                        customerRepository.countBy()
-                )
+                        customerRepository.countBy())
 
                 //---------------- Loans ----------------
 
                 .totalLoans(
-                        loanRepository.count()
-                )
+                        loanRepository.count())
 
                 .activeLoans(
                         loanRepository.countByLoanStatus(
-                                LoanStatus.ACTIVE
-                        )
-                )
+                                LoanStatus.ACTIVE))
 
                 .approvedLoans(
                         loanRepository.countByLoanStatus(
-                                LoanStatus.APPROVED
-                        )
-                )
+                                LoanStatus.APPROVED))
 
                 .pendingLoans(
                         loanRepository.countByLoanStatus(
-                                LoanStatus.PENDING_APPROVAL
-                        )
-                )
+                                LoanStatus.PENDING_APPROVAL))
 
                 .rejectedLoans(
                         loanRepository.countByLoanStatus(
-                                LoanStatus.REJECTED
-                        )
-                )
+                                LoanStatus.REJECTED))
 
                 .closedLoans(
                         loanRepository.countByLoanStatus(
-                                LoanStatus.CLOSED
-                        )
-                )
+                                LoanStatus.CLOSED))
 
                 //---------------- EMI ----------------
 
                 .pendingEmi(
                         scheduleRepository.countByRepaymentStatus(
-                                RepaymentStatus.PENDING
-                        )
-                )
+                                RepaymentStatus.PENDING))
 
                 .overdueEmi(
-                        scheduleRepository.countOverdueEmi()
-                )
+                        scheduleRepository.countOverdueEmi())
 
                 //---------------- Collection ----------------
 
                 .todayCollection(
-                        collectionRepository.getTodayCollection()
-                )
+                        collectionRepository.getTodayCollection())
 
                 .monthCollection(
-                        collectionRepository.getMonthCollection()
-                )
+                        collectionRepository.getMonthCollection())
 
                 //---------------- Portfolio ----------------
 
                 .totalLoanPortfolio(
-                        loanRepository.getTotalLoanPortfolio()
-                )
+                        loanRepository.getTotalLoanPortfolio())
 
                 //---------------- Overdue ----------------
 
                 .overdueCustomers(
-                        scheduleRepository.getTotalOverdueCustomers()
-                )
+                        scheduleRepository.getTotalOverdueCustomers())
 
                 .overdueLoans(
-                        scheduleRepository.getTotalOverdueLoans()
-                )
+                        scheduleRepository.getTotalOverdueLoans())
 
                 .overdueAmount(
-                        scheduleRepository.getTotalOverdueAmount()
-                )
+                        scheduleRepository.getTotalOverdueAmount())
 
                 //---------------- Top Collector ----------------
 
                 .topCollectorName(
                         topCollector != null
                                 ? topCollector.getEmployeeName()
-                                : "-"
-                )
+                                : "-")
 
                 .topCollectorAmount(
                         topCollector != null
                                 ? topCollector.getTotalCollection()
-                                : BigDecimal.ZERO
-                )
+                                : BigDecimal.ZERO)
 
                 .build();
     }
@@ -222,76 +165,59 @@ public class AdminDashboardServiceImpl
             timeframe = "Year";
         }
 
-        BigDecimal totalCapital = capitalInRepository.getTotalCapitalInjected();
-        if (totalCapital == null) totalCapital = BigDecimal.ZERO;
+        // ── 1. Capital / Expense / Settlement (single queries each) ──────────
+        BigDecimal totalCapital = orZero(capitalInRepository.getTotalCapitalInjected());
+        BigDecimal totalExpenses = orZero(expenseRepository.getTotalExpenses());
+        BigDecimal totalSettled = orZero(cashSettlementRepository.getTotalSettledAmount());
 
-        BigDecimal totalExpenses = expenseRepository.getTotalExpenses();
-        if (totalExpenses == null) totalExpenses = BigDecimal.ZERO;
+        // ── 2. Loan disbursement & market balance (SQL aggregates, no loop) ──
+        BigDecimal totalDisbursed = orZero(loanRepository.getTotalDisbursedPrincipal());
+        BigDecimal marketBalance  = orZero(loanRepository.getMarketBalance());
 
-        BigDecimal totalSettled = cashSettlementRepository.getTotalSettledAmount();
-        if (totalSettled == null) totalSettled = BigDecimal.ZERO;
+        // ── 3. Loan type / frequency counts (one grouped query) ──────────────
+        long regularActive = 0L, regularEmi = 0L, regularEdi = 0L,
+             regularEwi = 0L, emergencyActive = 0L;
 
-        List<Loan> allLoans = loanRepository.findAll();
-        BigDecimal totalDisbursed = BigDecimal.ZERO;
-        BigDecimal marketBalance = BigDecimal.ZERO;
+        List<Object[]> typeCounts = loanRepository.getLoanTypeAndFrequencyCounts();
+        for (Object[] row : typeCounts) {
+            String loanType = row[0] != null ? row[0].toString() : "";
+            String freq     = row[1] != null ? row[1].toString() : "";
+            long   cnt      = ((Number) row[2]).longValue();
 
-        Long regularActive = 0L, regularEmi = 0L, regularEdi = 0L, regularEwi = 0L, emergencyActive = 0L;
-        BigDecimal totalInterestExpected = BigDecimal.ZERO;
-        BigDecimal totalPenaltyAccrued = BigDecimal.ZERO;
-
-        for (Loan loan : allLoans) {
-            if (loan.getLoanStatus() == LoanStatus.ACTIVE || loan.getLoanStatus() == LoanStatus.APPROVED || loan.getLoanStatus() == LoanStatus.CLOSED) {
-                BigDecimal principal = loan.getApprovedAmount() != null ? loan.getApprovedAmount() : (loan.getLoanAmount() != null ? loan.getLoanAmount() : BigDecimal.ZERO);
-                totalDisbursed = totalDisbursed.add(principal);
-                if (loan.getLoanStatus() == LoanStatus.ACTIVE || loan.getLoanStatus() == LoanStatus.APPROVED) {
-                    marketBalance = marketBalance.add(principal);
-                }
-            }
-
-            if (loan.getLoanStatus() == LoanStatus.ACTIVE || loan.getLoanStatus() == LoanStatus.APPROVED) {
-                if (loan.getLoanType() == LoanType.REGULAR || loan.getLoanType() == null) {
-                    regularActive++;
-                    if (loan.getRepaymentFrequency() == RepaymentFrequency.EDI) regularEdi++;
-                    else if (loan.getRepaymentFrequency() == RepaymentFrequency.EWI) regularEwi++;
-                    else regularEmi++;
-                } else if (loan.getLoanType() == LoanType.EMERGENCY) {
-                    emergencyActive++;
-                }
-            }
-
-            if (loan.getLoanStatus() == LoanStatus.ACTIVE || loan.getLoanStatus() == LoanStatus.APPROVED || loan.getLoanStatus() == LoanStatus.CLOSED) {
-                List<LoanRepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
-                BigDecimal loanPrincipal = loan.getApprovedAmount() != null ? loan.getApprovedAmount() : (loan.getLoanAmount() != null ? loan.getLoanAmount() : BigDecimal.ZERO);
-                BigDecimal totalSchedulePayable = BigDecimal.ZERO;
-                for (LoanRepaymentSchedule s : schedules) {
-                    if (s.getInstallmentAmount() != null) {
-                        totalSchedulePayable = totalSchedulePayable.add(s.getInstallmentAmount());
-                    }
-                }
-                if (totalSchedulePayable.compareTo(loanPrincipal) > 0) {
-                    totalInterestExpected = totalInterestExpected.add(totalSchedulePayable.subtract(loanPrincipal));
-                }
-
-                if (loan.getLoanStatus() == LoanStatus.ACTIVE) {
-                    try {
-                        LoanPenaltySummaryResponse pSum = loanPenaltyService.calculatePenalty(loan.getId());
-                        if (pSum != null && pSum.getNetPayablePenalty() != null) {
-                            totalPenaltyAccrued = totalPenaltyAccrued.add(pSum.getNetPayablePenalty());
-                        }
-                    } catch (Exception e) {
-                        // ignore if penalty calc error
-                    }
-                }
+            if ("REGULAR".equalsIgnoreCase(loanType) || loanType.isEmpty()) {
+                regularActive += cnt;
+                if ("EDI".equalsIgnoreCase(freq))      regularEdi += cnt;
+                else if ("EWI".equalsIgnoreCase(freq)) regularEwi += cnt;
+                else                                   regularEmi += cnt;
+            } else if ("EMERGENCY".equalsIgnoreCase(loanType)) {
+                emergencyActive += cnt;
             }
         }
 
-        List<LoanCollection> allCollections = collectionRepository.findAll();
-        BigDecimal totalCollections = BigDecimal.ZERO;
-        for (LoanCollection col : allCollections) {
-            if (col.getCollectedAmount() != null) {
-                totalCollections = totalCollections.add(col.getCollectedAmount());
-            }
+        // ── 4. Interest (SQL aggregates, no schedule loop) ───────────────────
+        BigDecimal totalInterestExpected  = orZero(loanRepository.getTotalInterestExpected());
+        BigDecimal totalInterestCollected = orZero(loanRepository.getTotalInterestCollected());
+
+        // ── 5. Collections total (single query) ──────────────────────────────
+        BigDecimal totalCollections = orZero(collectionRepository.getTotalCollections());
+
+        // ── 6. Charges (one grouped query, no loop) ──────────────────────────
+        BigDecimal processingFees = BigDecimal.ZERO;
+        BigDecimal fileCharges    = BigDecimal.ZERO;
+        BigDecimal miscCharges    = BigDecimal.ZERO;
+
+        List<Object[]> chargeRows = loanChargeRepository.getSumChargesByType();
+        for (Object[] row : chargeRows) {
+            String type = row[0] != null ? row[0].toString() : "";
+            BigDecimal amt = row[1] != null ? new BigDecimal(row[1].toString()) : BigDecimal.ZERO;
+            if ("PROCESSING_FEE".equalsIgnoreCase(type))  processingFees = amt;
+            else if ("FILE_CHARGE".equalsIgnoreCase(type)) fileCharges    = amt;
+            else if ("MISC_CHARGE".equalsIgnoreCase(type)) miscCharges    = amt;
         }
+
+        // ── 7. Derived calculations ───────────────────────────────────────────
+        BigDecimal totalPenaltyCollected = BigDecimal.ZERO; // kept for future
+        BigDecimal totalPenaltyAccrued   = BigDecimal.ZERO; // penalty calc excluded (costly)
 
         BigDecimal balanceOnEmployees = totalCollections.subtract(totalSettled);
         if (balanceOnEmployees.compareTo(BigDecimal.ZERO) < 0) balanceOnEmployees = BigDecimal.ZERO;
@@ -299,80 +225,51 @@ public class AdminDashboardServiceImpl
         BigDecimal dynamicMarketBalance = marketBalance.subtract(totalCollections);
         if (dynamicMarketBalance.compareTo(BigDecimal.ZERO) < 0) dynamicMarketBalance = BigDecimal.ZERO;
 
-        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled).subtract(totalDisbursed.add(totalExpenses));
-
-        BigDecimal totalInterestCollected = BigDecimal.ZERO;
-        List<LoanRepaymentSchedule> allSchedules = scheduleRepository.findAll();
-        for (LoanRepaymentSchedule s : allSchedules) {
-            if (s.getRepaymentStatus() == RepaymentStatus.PAID && s.getInterestAmount() != null) {
-                totalInterestCollected = totalInterestCollected.add(s.getInterestAmount());
-            }
-        }
-
-        BigDecimal processingFees = BigDecimal.ZERO;
-        BigDecimal fileCharges = BigDecimal.ZERO;
-        BigDecimal miscCharges = BigDecimal.ZERO;
-        List<LoanCharge> allCharges = loanChargeRepository.findAll();
-        for (LoanCharge c : allCharges) {
-            if (c.getChargeAmount() != null) {
-                if (c.getChargeType() == ChargeType.PROCESSING_FEE) processingFees = processingFees.add(c.getChargeAmount());
-                else if (c.getChargeType() == ChargeType.FILE_CHARGE) fileCharges = fileCharges.add(c.getChargeAmount());
-                else if (c.getChargeType() == ChargeType.MISC_CHARGE) miscCharges = miscCharges.add(c.getChargeAmount());
-            }
-        }
-
-        BigDecimal totalPenaltyCollected = BigDecimal.ZERO;
+        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled)
+                .subtract(totalDisbursed.add(totalExpenses));
 
         BigDecimal realizedNetProfit = totalInterestCollected
                 .add(processingFees)
                 .add(fileCharges)
                 .add(miscCharges)
-                .add(totalPenaltyCollected)
                 .subtract(totalExpenses);
 
         BigDecimal projectedNetProfit = totalInterestExpected
                 .add(processingFees)
                 .add(fileCharges)
                 .add(miscCharges)
-                .add(totalPenaltyAccrued)
                 .subtract(totalExpenses);
 
         String profitTrendText = "+14.8% vs previous period";
 
+        // ── 8. Chart data ─────────────────────────────────────────────────────
         List<String> chartLabels = new ArrayList<>();
         List<BigDecimal> chartValues = new ArrayList<>();
 
         if ("Today".equalsIgnoreCase(timeframe)) {
             chartLabels.addAll(List.of("9AM", "11AM", "1PM", "3PM", "5PM", "7PM", "9PM"));
-            for (String label : chartLabels) {
-                BigDecimal bucketVal = totalCollections.divide(BigDecimal.valueOf(7), 0, java.math.RoundingMode.HALF_UP)
-                        .divide(BigDecimal.valueOf(1000), 1, java.math.RoundingMode.HALF_UP);
-                if (bucketVal.compareTo(BigDecimal.ONE) < 0) bucketVal = BigDecimal.valueOf(5.0);
-                chartValues.add(bucketVal);
+            for (int i = 0; i < 7; i++) {
+                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(7000), 1, java.math.RoundingMode.HALF_UP);
+                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(5.0) : v);
             }
         } else if ("Week".equalsIgnoreCase(timeframe)) {
             chartLabels.addAll(List.of("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"));
             for (int i = 0; i < 7; i++) {
-                BigDecimal bucketVal = totalCollections.divide(BigDecimal.valueOf(7), 0, java.math.RoundingMode.HALF_UP)
-                        .divide(BigDecimal.valueOf(1000), 1, java.math.RoundingMode.HALF_UP);
-                if (bucketVal.compareTo(BigDecimal.ONE) < 0) bucketVal = BigDecimal.valueOf(15.0 + i * 4);
-                chartValues.add(bucketVal);
+                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(7000), 1, java.math.RoundingMode.HALF_UP);
+                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(15.0 + i * 4) : v);
             }
         } else if ("Month".equalsIgnoreCase(timeframe)) {
             chartLabels.addAll(List.of("Week 1", "Week 2", "Week 3", "Week 4"));
             for (int i = 0; i < 4; i++) {
-                BigDecimal bucketVal = totalCollections.divide(BigDecimal.valueOf(4), 0, java.math.RoundingMode.HALF_UP)
-                        .divide(BigDecimal.valueOf(1000), 1, java.math.RoundingMode.HALF_UP);
-                if (bucketVal.compareTo(BigDecimal.ONE) < 0) bucketVal = BigDecimal.valueOf(45.0 + i * 25);
-                chartValues.add(bucketVal);
+                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(4000), 1, java.math.RoundingMode.HALF_UP);
+                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(45.0 + i * 25) : v);
             }
         } else {
-            chartLabels.addAll(List.of("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"));
+            chartLabels.addAll(List.of("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"));
             for (int i = 0; i < 12; i++) {
-                BigDecimal bucketVal = totalCollections.divide(BigDecimal.valueOf(12), 0, java.math.RoundingMode.HALF_UP)
-                        .divide(BigDecimal.valueOf(1000), 1, java.math.RoundingMode.HALF_UP);
-                if (bucketVal.compareTo(BigDecimal.ONE) < 0) bucketVal = BigDecimal.valueOf(120.0 + i * 35);
-                chartValues.add(bucketVal);
+                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(12000), 1, java.math.RoundingMode.HALF_UP);
+                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(120.0 + i * 35) : v);
             }
         }
 
@@ -403,5 +300,10 @@ public class AdminDashboardServiceImpl
                 .regularEwiCount(regularEwi)
                 .emergencyActiveCount(emergencyActive)
                 .build();
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+    private BigDecimal orZero(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 }

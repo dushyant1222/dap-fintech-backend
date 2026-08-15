@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -253,4 +254,43 @@ public interface LoanRepaymentScheduleRepository
     		""", nativeQuery = true)
     		List<OverdueCustomerProjection>
     		getOverdueCustomers();
+
+    // ── Bulk UPDATE (replaces load-all + save-in-loop) ─────────────────────
+    @Modifying
+    @Query(value = """
+            UPDATE loan_repayment_schedules
+            SET repayment_status = 'OVERDUE'
+            WHERE repayment_status = 'PENDING'
+            AND due_date < CURRENT_DATE
+            """, nativeQuery = true)
+    void bulkMarkOverdue();
+
+    @Modifying
+    @Query(value = """
+            UPDATE loan_repayment_schedules
+            SET repayment_status = 'PAID',
+                paid_amount = installment_amount,
+                outstanding_amount = 0
+            WHERE loan_id = :loanId
+            AND (outstanding_amount IS NULL OR outstanding_amount > 0)
+            """, nativeQuery = true)
+    void bulkMarkLoanSchedulesPaid(@Param("loanId") UUID loanId);
+
+    // ── Aggregate SUM queries (replaces stream().reduce()) ─────────────────
+    @Query(value = """
+            SELECT COALESCE(SUM(outstanding_amount), 0)
+            FROM loan_repayment_schedules
+            WHERE loan_id = :loanId
+            """, nativeQuery = true)
+    BigDecimal getSumOutstandingByLoan(@Param("loanId") UUID loanId);
+
+    @Query(value = """
+            SELECT COALESCE(installment_amount, 0)
+            FROM loan_repayment_schedules
+            WHERE loan_id = :loanId
+            ORDER BY installment_number ASC
+            LIMIT 1
+            """, nativeQuery = true)
+    BigDecimal getFirstInstallmentAmountByLoan(@Param("loanId") UUID loanId);
 }
+

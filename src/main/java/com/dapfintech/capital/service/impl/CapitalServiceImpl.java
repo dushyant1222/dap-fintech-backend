@@ -165,65 +165,33 @@ public class CapitalServiceImpl implements CapitalService {
 
     @Override
     public CapitalSummaryResponse getCapitalSummary() {
-        BigDecimal totalCapital = capitalInRepository.getTotalCapitalInjected();
-        if (totalCapital == null) totalCapital = BigDecimal.ZERO;
+        BigDecimal totalCapital = orZero(capitalInRepository.getTotalCapitalInjected());
+        BigDecimal totalExpenses = orZero(expenseRepository.getTotalExpenses());
+        BigDecimal totalSettled = orZero(cashSettlementRepository.getTotalSettledAmount());
 
-        BigDecimal totalExpenses = expenseRepository.getTotalExpenses();
-        if (totalExpenses == null) totalExpenses = BigDecimal.ZERO;
+        // SQL aggregates — no findAll() loops
+        BigDecimal totalDisbursed = orZero(loanRepository.getTotalDisbursedPrincipal());
+        BigDecimal marketBalance  = orZero(loanRepository.getMarketBalance());
+        BigDecimal totalCollections = orZero(loanCollectionRepository.getTotalCollections());
 
-        BigDecimal totalSettled = cashSettlementRepository.getTotalSettledAmount();
-        if (totalSettled == null) totalSettled = BigDecimal.ZERO;
-
-        List<Loan> allLoans = loanRepository.findAll();
-        BigDecimal totalDisbursed = BigDecimal.ZERO;
-        BigDecimal marketBalance = BigDecimal.ZERO;
-
-        for (Loan loan : allLoans) {
-            if (loan.getLoanStatus() == LoanStatus.ACTIVE || loan.getLoanStatus() == LoanStatus.APPROVED || loan.getLoanStatus() == LoanStatus.CLOSED) {
-                BigDecimal principal = loan.getApprovedAmount() != null ? loan.getApprovedAmount() : (loan.getLoanAmount() != null ? loan.getLoanAmount() : BigDecimal.ZERO);
-                totalDisbursed = totalDisbursed.add(principal);
-                if (loan.getLoanStatus() == LoanStatus.ACTIVE || loan.getLoanStatus() == LoanStatus.APPROVED) {
-                    marketBalance = marketBalance.add(principal);
-                }
-            }
-        }
-
-        List<LoanCollection> allCollections = loanCollectionRepository.findAll();
-        BigDecimal totalCollections = BigDecimal.ZERO;
-        for (LoanCollection collection : allCollections) {
-            if (collection.getCollectedAmount() != null) {
-                totalCollections = totalCollections.add(collection.getCollectedAmount());
-            }
-        }
+        BigDecimal adminIncomingTransfers = orZero(internalTransferRepository.getAdminIncomingTransfers());
+        BigDecimal adminOutgoingTransfers = orZero(internalTransferRepository.getAdminOutgoingTransfers());
 
         BigDecimal balanceOnEmployees = totalCollections.subtract(totalSettled);
         if (balanceOnEmployees.compareTo(BigDecimal.ZERO) < 0) {
             balanceOnEmployees = BigDecimal.ZERO;
         }
-        
-        List<InternalTransfer> allTransfers = internalTransferRepository.findAll();
-        BigDecimal adminIncomingTransfers = BigDecimal.ZERO;
-        BigDecimal adminOutgoingTransfers = BigDecimal.ZERO;
-        
-        for (InternalTransfer t : allTransfers) {
-            if (t.getStatus() == TransferStatus.ACCEPTED) {
-                if (t.getReceiver().getRole().getRoleName().equalsIgnoreCase("ADMIN") || t.getReceiver().getRole().getRoleName().equalsIgnoreCase("SUPER_ADMIN")) {
-                    adminIncomingTransfers = adminIncomingTransfers.add(t.getAmount());
-                }
-                if (t.getSender().getRole().getRoleName().equalsIgnoreCase("ADMIN") || t.getSender().getRole().getRoleName().equalsIgnoreCase("SUPER_ADMIN")) {
-                    adminOutgoingTransfers = adminOutgoingTransfers.add(t.getAmount());
-                }
-            }
-        }
 
-        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled).add(adminIncomingTransfers).subtract(totalDisbursed.add(totalExpenses).add(adminOutgoingTransfers));
+        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled).add(adminIncomingTransfers)
+                .subtract(totalDisbursed.add(totalExpenses).add(adminOutgoingTransfers));
 
         BigDecimal dynamicMarketBalance = marketBalance.subtract(totalCollections);
         if (dynamicMarketBalance.compareTo(BigDecimal.ZERO) < 0) {
             dynamicMarketBalance = BigDecimal.ZERO;
         }
 
-        BigDecimal expectedTotalReturn = marketBalance.multiply(BigDecimal.valueOf(1.10)).setScale(2, RoundingMode.HALF_UP).subtract(totalCollections);
+        BigDecimal expectedTotalReturn = marketBalance.multiply(BigDecimal.valueOf(1.10))
+                .setScale(2, RoundingMode.HALF_UP).subtract(totalCollections);
         if (expectedTotalReturn.compareTo(BigDecimal.ZERO) < 0) {
             expectedTotalReturn = BigDecimal.ZERO;
         }
@@ -253,133 +221,100 @@ public class CapitalServiceImpl implements CapitalService {
         List<Loan> loans = loanRepository.findAll();
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy");
-        Map<String, PivotRowResponse.PivotRowResponseBuilder> map = new HashMap<>();
-
-        if (filter == null) {
-            filter = new PivotFilterRequest();
-        }
-
-        for (CapitalIn c : capitalIns) {
-            if (c.getCapitalDate() != null && filterDate(c.getCapitalDate().toLocalDate(), filter)) {
-                String key = c.getCapitalDate().format(formatter);
-                map.putIfAbsent(key, PivotRowResponse.builder().groupLabel(key)
-                        .capitalIn(BigDecimal.ZERO).disbursedAmount(BigDecimal.ZERO)
-                        .marketBalance(BigDecimal.ZERO).collectedAmount(BigDecimal.ZERO)
-                        .settledAmount(BigDecimal.ZERO).pendingEmployeeBalance(BigDecimal.ZERO)
-                        .expenses(BigDecimal.ZERO).netEarnings(BigDecimal.ZERO));
-            }
-        }
-
-        for (Loan l : loans) {
-            if (l.getApplicationDate() != null && filterDate(l.getApplicationDate().toLocalDate(), filter)) {
-                if (filter.getMarketId() == null || (l.getCustomer() != null && l.getCustomer().getMarket() != null && filter.getMarketId().equals(l.getCustomer().getMarket().getId()))) {
-                    String key = l.getApplicationDate().format(formatter);
-                    map.putIfAbsent(key, PivotRowResponse.builder().groupLabel(key)
-                            .capitalIn(BigDecimal.ZERO).disbursedAmount(BigDecimal.ZERO)
-                            .marketBalance(BigDecimal.ZERO).collectedAmount(BigDecimal.ZERO)
-                            .settledAmount(BigDecimal.ZERO).pendingEmployeeBalance(BigDecimal.ZERO)
-                            .expenses(BigDecimal.ZERO).netEarnings(BigDecimal.ZERO));
-                }
-            }
-        }
-
-        for (LoanCollection col : collections) {
-            if (col.getCollectionDate() != null && filterDate(col.getCollectionDate().toLocalDate(), filter)) {
-                if (filter.getEmployeeId() == null || (col.getCollectedBy() != null && filter.getEmployeeId().equals(col.getCollectedBy().getId()))) {
-                    String key = col.getCollectionDate().format(formatter);
-                    map.putIfAbsent(key, PivotRowResponse.builder().groupLabel(key)
-                            .capitalIn(BigDecimal.ZERO).disbursedAmount(BigDecimal.ZERO)
-                            .marketBalance(BigDecimal.ZERO).collectedAmount(BigDecimal.ZERO)
-                            .settledAmount(BigDecimal.ZERO).pendingEmployeeBalance(BigDecimal.ZERO)
-                            .expenses(BigDecimal.ZERO).netEarnings(BigDecimal.ZERO));
-                }
-            }
-        }
-
-        for (CashSettlement cs : settlements) {
-            if (cs.getSettlementDate() != null && filterDate(cs.getSettlementDate().toLocalDate(), filter)) {
-                if (filter.getEmployeeId() == null || (cs.getEmployee() != null && filter.getEmployeeId().equals(cs.getEmployee().getId()))) {
-                    String key = cs.getSettlementDate().format(formatter);
-                    map.putIfAbsent(key, PivotRowResponse.builder().groupLabel(key)
-                            .capitalIn(BigDecimal.ZERO).disbursedAmount(BigDecimal.ZERO)
-                            .marketBalance(BigDecimal.ZERO).collectedAmount(BigDecimal.ZERO)
-                            .settledAmount(BigDecimal.ZERO).pendingEmployeeBalance(BigDecimal.ZERO)
-                            .expenses(BigDecimal.ZERO).netEarnings(BigDecimal.ZERO));
-                }
-            }
-        }
-
-        for (Expense e : expenses) {
-            if (e.getExpenseDate() != null && filterDate(e.getExpenseDate().toLocalDate(), filter)) {
-                if (filter.getEmployeeId() == null || (e.getEmployee() != null && filter.getEmployeeId().equals(e.getEmployee().getId()))) {
-                    String key = e.getExpenseDate().format(formatter);
-                    map.putIfAbsent(key, PivotRowResponse.builder().groupLabel(key)
-                            .capitalIn(BigDecimal.ZERO).disbursedAmount(BigDecimal.ZERO)
-                            .marketBalance(BigDecimal.ZERO).collectedAmount(BigDecimal.ZERO)
-                            .settledAmount(BigDecimal.ZERO).pendingEmployeeBalance(BigDecimal.ZERO)
-                            .expenses(BigDecimal.ZERO).netEarnings(BigDecimal.ZERO));
-                }
-            }
-        }
-
-        for (String key : map.keySet()) {
+        // Helper to hold running totals for each date
+        class DayTotals {
             BigDecimal capIn = BigDecimal.ZERO;
             BigDecimal disbursed = BigDecimal.ZERO;
             BigDecimal collected = BigDecimal.ZERO;
             BigDecimal settled = BigDecimal.ZERO;
             BigDecimal exp = BigDecimal.ZERO;
+        }
 
-            for (CapitalIn c : capitalIns) {
-                if (c.getCapitalDate() != null && c.getCapitalDate().format(formatter).equals(key) && filterDate(c.getCapitalDate().toLocalDate(), filter)) {
-                    capIn = capIn.add(c.getAmount() != null ? c.getAmount() : BigDecimal.ZERO);
-                }
-            }
-            for (Loan l : loans) {
-                if (l.getApplicationDate() != null && l.getApplicationDate().format(formatter).equals(key) && filterDate(l.getApplicationDate().toLocalDate(), filter)) {
-                    if (filter.getMarketId() == null || (l.getCustomer() != null && l.getCustomer().getMarket() != null && filter.getMarketId().equals(l.getCustomer().getMarket().getId()))) {
-                        BigDecimal p = l.getApprovedAmount() != null ? l.getApprovedAmount() : (l.getLoanAmount() != null ? l.getLoanAmount() : BigDecimal.ZERO);
-                        disbursed = disbursed.add(p);
-                    }
-                }
-            }
-            for (LoanCollection col : collections) {
-                if (col.getCollectionDate() != null && col.getCollectionDate().format(formatter).equals(key) && filterDate(col.getCollectionDate().toLocalDate(), filter)) {
-                    if (filter.getEmployeeId() == null || (col.getCollectedBy() != null && filter.getEmployeeId().equals(col.getCollectedBy().getId()))) {
-                        collected = collected.add(col.getCollectedAmount() != null ? col.getCollectedAmount() : BigDecimal.ZERO);
-                    }
-                }
-            }
-            for (CashSettlement cs : settlements) {
-                if (cs.getSettlementDate() != null && cs.getSettlementDate().format(formatter).equals(key) && filterDate(cs.getSettlementDate().toLocalDate(), filter)) {
-                    if (filter.getEmployeeId() == null || (cs.getEmployee() != null && filter.getEmployeeId().equals(cs.getEmployee().getId()))) {
-                        settled = settled.add(cs.getAmountSettled() != null ? cs.getAmountSettled() : BigDecimal.ZERO);
-                    }
-                }
-            }
-            for (Expense e : expenses) {
-                if (e.getExpenseDate() != null && e.getExpenseDate().format(formatter).equals(key) && filterDate(e.getExpenseDate().toLocalDate(), filter)) {
-                    if (filter.getEmployeeId() == null || (e.getEmployee() != null && filter.getEmployeeId().equals(e.getEmployee().getId()))) {
-                        exp = exp.add(e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO);
-                    }
-                }
-            }
+        Map<String, DayTotals> totalsMap = new HashMap<>();
 
-            BigDecimal pendingEmp = collected.subtract(settled);
+        if (filter == null) {
+            filter = new PivotFilterRequest();
+        }
+
+        // 1. Process Capital Ins
+        for (CapitalIn c : capitalIns) {
+            if (c.getCapitalDate() != null && filterDate(c.getCapitalDate().toLocalDate(), filter)) {
+                String key = c.getCapitalDate().format(formatter);
+                totalsMap.computeIfAbsent(key, k -> new DayTotals()).capIn = 
+                    totalsMap.get(key).capIn.add(c.getAmount() != null ? c.getAmount() : BigDecimal.ZERO);
+            }
+        }
+
+        // 2. Process Loans (Disbursements)
+        for (Loan l : loans) {
+            if (l.getApplicationDate() != null && filterDate(l.getApplicationDate().toLocalDate(), filter)) {
+                if (filter.getMarketId() == null || (l.getCustomer() != null && l.getCustomer().getMarket() != null && filter.getMarketId().equals(l.getCustomer().getMarket().getId()))) {
+                    String key = l.getApplicationDate().format(formatter);
+                    BigDecimal p = l.getApprovedAmount() != null ? l.getApprovedAmount() : (l.getLoanAmount() != null ? l.getLoanAmount() : BigDecimal.ZERO);
+                    totalsMap.computeIfAbsent(key, k -> new DayTotals()).disbursed = 
+                        totalsMap.get(key).disbursed.add(p);
+                }
+            }
+        }
+
+        // 3. Process Collections
+        for (LoanCollection col : collections) {
+            if (col.getCollectionDate() != null && filterDate(col.getCollectionDate().toLocalDate(), filter)) {
+                if (filter.getEmployeeId() == null || (col.getCollectedBy() != null && filter.getEmployeeId().equals(col.getCollectedBy().getId()))) {
+                    String key = col.getCollectionDate().format(formatter);
+                    totalsMap.computeIfAbsent(key, k -> new DayTotals()).collected = 
+                        totalsMap.get(key).collected.add(col.getCollectedAmount() != null ? col.getCollectedAmount() : BigDecimal.ZERO);
+                }
+            }
+        }
+
+        // 4. Process Settlements
+        for (CashSettlement cs : settlements) {
+            if (cs.getSettlementDate() != null && filterDate(cs.getSettlementDate().toLocalDate(), filter)) {
+                if (filter.getEmployeeId() == null || (cs.getEmployee() != null && filter.getEmployeeId().equals(cs.getEmployee().getId()))) {
+                    String key = cs.getSettlementDate().format(formatter);
+                    totalsMap.computeIfAbsent(key, k -> new DayTotals()).settled = 
+                        totalsMap.get(key).settled.add(cs.getAmountSettled() != null ? cs.getAmountSettled() : BigDecimal.ZERO);
+                }
+            }
+        }
+
+        // 5. Process Expenses
+        for (Expense e : expenses) {
+            if (e.getExpenseDate() != null && filterDate(e.getExpenseDate().toLocalDate(), filter)) {
+                if (filter.getEmployeeId() == null || (e.getEmployee() != null && filter.getEmployeeId().equals(e.getEmployee().getId()))) {
+                    String key = e.getExpenseDate().format(formatter);
+                    totalsMap.computeIfAbsent(key, k -> new DayTotals()).exp = 
+                        totalsMap.get(key).exp.add(e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO);
+                }
+            }
+        }
+
+        // Now build the response rows (O(Dates) instead of O(Dates * Rows))
+        for (Map.Entry<String, DayTotals> entry : totalsMap.entrySet()) {
+            String key = entry.getKey();
+            DayTotals t = entry.getValue();
+
+            BigDecimal pendingEmp = t.collected.subtract(t.settled);
             if (pendingEmp.compareTo(BigDecimal.ZERO) < 0) pendingEmp = BigDecimal.ZERO;
-            BigDecimal netEarn = collected.subtract(exp);
+            
+            BigDecimal netEarn = t.collected.subtract(t.exp);
+            BigDecimal marketBal = t.disbursed.subtract(t.collected);
+            if (marketBal.compareTo(BigDecimal.ZERO) < 0) marketBal = BigDecimal.ZERO;
 
             rows.add(PivotRowResponse.builder()
                     .groupLabel(key)
-                    .capitalIn(capIn)
-                    .disbursedAmount(disbursed)
-                    .marketBalance(disbursed.subtract(collected).max(BigDecimal.ZERO))
-                    .collectedAmount(collected)
-                    .settledAmount(settled)
+                    .capitalIn(t.capIn)
+                    .disbursedAmount(t.disbursed)
+                    .marketBalance(marketBal)
+                    .collectedAmount(t.collected)
+                    .settledAmount(t.settled)
                     .pendingEmployeeBalance(pendingEmp)
-                    .expenses(exp)
+                    .expenses(t.exp)
                     .netEarnings(netEarn)
                     .build());
         }
+
 
         DateTimeFormatter sortFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy");
         rows.sort((r1, r2) -> {
@@ -421,5 +356,9 @@ public class CapitalServiceImpl implements CapitalService {
             return false;
         }
         return true;
+    }
+
+    private BigDecimal orZero(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 }

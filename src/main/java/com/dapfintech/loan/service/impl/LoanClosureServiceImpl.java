@@ -149,22 +149,8 @@ public class LoanClosureServiceImpl
         //----------------------------------------------------------
 
         BigDecimal outstandingAmount =
-                repaymentScheduleRepository
-                        .findByLoanIdOrderByInstallmentNumberAsc(
-                                loanId
-                        )
-                        .stream()
-                        .map(
-                                LoanRepaymentSchedule
-                                        ::getOutstandingAmount
-                        )
-                        .filter(
-                                amount -> amount != null
-                        )
-                        .reduce(
-                                BigDecimal.ZERO,
-                                BigDecimal::add
-                        );
+                repaymentScheduleRepository.getSumOutstandingByLoan(loanId);
+        if (outstandingAmount == null) outstandingAmount = BigDecimal.ZERO;
 
 
         //----------------------------------------------------------
