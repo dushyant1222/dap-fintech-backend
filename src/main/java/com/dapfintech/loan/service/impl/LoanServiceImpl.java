@@ -848,8 +848,20 @@ public class LoanServiceImpl
                                 )
                         );
 
+        String typePrefix = request.getLoanType() == com.dapfintech.loan.enums.LoanType.REGULAR ? "RLN" : "ELN";
+        String custPrefix = "NA";
+        if (customer.getFirstName() != null && !customer.getFirstName().trim().isEmpty()) {
+            String cName = customer.getFirstName().trim().toUpperCase();
+            custPrefix = cName.length() >= 2 ? cName.substring(0, 2) : cName;
+        }
+        String marketPrefix = "NA";
+        if (customer.getMarket() != null && customer.getMarket().getMarketName() != null && !customer.getMarket().getMarketName().trim().isEmpty()) {
+            String mName = customer.getMarket().getMarketName().trim().toUpperCase();
+            marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
+        }
+
         long customerLoanCount = loanRepository.countByCustomerId(customer.getId());
-        String loanCodeStr = String.format("%s-L%03d", customer.getCustomerCode(), customerLoanCount + 1);
+        String loanCodeStr = String.format("%s-%s-%s-%d", typePrefix, custPrefix, marketPrefix, customerLoanCount + 1);
 
         Loan loan =
                 Loan.builder()

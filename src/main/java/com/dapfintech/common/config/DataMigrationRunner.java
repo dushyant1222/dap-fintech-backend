@@ -44,16 +44,35 @@ public class DataMigrationRunner implements CommandLineRunner {
 
         // Migrate Customers
         List<Customer> customers = customerRepository.findAll();
-        long custCount = 0;
         for (Customer cust : customers) {
-            if (cust.getCustomerCode() == null || !cust.getCustomerCode().startsWith("DAP-CUST-")) {
-                custCount++;
-                cust.setCustomerCode(String.format("DAP-CUST-%03d", custCount));
-                customerRepository.save(cust);
-                log.info("Migrated customer: {} -> {}", cust.getFirstName(), cust.getCustomerCode());
-            } else {
-                custCount++;
+            String marketPrefix = "NA";
+            if (cust.getMarket() != null && cust.getMarket().getMarketName() != null && !cust.getMarket().getMarketName().trim().isEmpty()) {
+                String mName = cust.getMarket().getMarketName().trim().toUpperCase();
+                marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
             }
+            // Count existing customers in this market that already have the new format up to this point
+            // This is just a migration script so we can just use an in-memory counter if we want, or a global counter.
+            // Actually to prevent overlaps if some have been migrated, we should just assign them sequentially.
+        }
+
+        // We need a better way to count per market in memory to avoid 1000s of queries.
+        java.util.Map<java.util.UUID, Long> marketCounters = new java.util.HashMap<>();
+        long globalCounter = 0;
+        
+        for (Customer cust : customers) {
+            String marketPrefix = "NA";
+            long count = 0;
+            if (cust.getMarket() != null && cust.getMarket().getMarketName() != null && !cust.getMarket().getMarketName().trim().isEmpty()) {
+                String mName = cust.getMarket().getMarketName().trim().toUpperCase();
+                marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
+                count = marketCounters.getOrDefault(cust.getMarket().getId(), 0L);
+                marketCounters.put(cust.getMarket().getId(), count + 1);
+            } else {
+                count = globalCounter++;
+            }
+            cust.setCustomerCode(String.format("CUST-%s-%d", marketPrefix, count + 1));
+            customerRepository.save(cust);
+            log.info("Migrated customer: {} -> {}", cust.getFirstName(), cust.getCustomerCode());
         }
 
         // Migrate Loans
@@ -62,14 +81,22 @@ public class DataMigrationRunner implements CommandLineRunner {
             long loanCount = 0;
             for (Loan loan : loans) {
                 if (loan.getCustomer() != null && loan.getCustomer().getId().equals(cust.getId())) {
-                    if (loan.getLoanCode() == null || loan.getLoanCode().isEmpty()) {
-                        loanCount++;
-                        loan.setLoanCode(String.format("%s-L%03d", cust.getCustomerCode(), loanCount));
-                        loanRepository.save(loan);
-                        log.info("Migrated loan: {} -> {}", loan.getId(), loan.getLoanCode());
-                    } else {
-                        loanCount++;
+                    String typePrefix = loan.getLoanType() == com.dapfintech.loan.enums.LoanType.REGULAR ? "RLN" : "ELN";
+                    String custPrefix = "NA";
+                    if (cust.getFirstName() != null && !cust.getFirstName().trim().isEmpty()) {
+                        String cName = cust.getFirstName().trim().toUpperCase();
+                        custPrefix = cName.length() >= 2 ? cName.substring(0, 2) : cName;
                     }
+                    String marketPrefix = "NA";
+                    if (cust.getMarket() != null && cust.getMarket().getMarketName() != null && !cust.getMarket().getMarketName().trim().isEmpty()) {
+                        String mName = cust.getMarket().getMarketName().trim().toUpperCase();
+                        marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
+                    }
+                    
+                    loan.setLoanCode(String.format("%s-%s-%s-%d", typePrefix, custPrefix, marketPrefix, loanCount + 1));
+                    loanRepository.save(loan);
+                    log.info("Migrated loan: {} -> {}", loan.getId(), loan.getLoanCode());
+                    loanCount++;
                 }
             }
         }

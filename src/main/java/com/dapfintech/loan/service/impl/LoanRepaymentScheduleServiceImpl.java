@@ -454,7 +454,7 @@ public class LoanRepaymentScheduleServiceImpl
 
             case EDI ->
                     disbursementDate.plusDays(
-                            installment
+                            installment - 1
                     );
         };
     }

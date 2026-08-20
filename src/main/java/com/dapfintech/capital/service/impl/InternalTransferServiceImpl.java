@@ -107,6 +107,36 @@ public class InternalTransferServiceImpl implements InternalTransferService {
             });
         }
         
+        // Update DayBook if sender is an Employee
+        if (transfer.getSender().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), today).ifPresent(dayBook -> {
+                if (dayBook.getOutgoingTransfers() == null) {
+                    dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
+                }
+                dayBook.setOutgoingTransfers(dayBook.getOutgoingTransfers().add(transfer.getAmount()));
+                
+                // Recalculate closing balance
+                if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(java.math.BigDecimal.ZERO);
+                if (dayBook.getCollections() == null) dayBook.setCollections(java.math.BigDecimal.ZERO);
+                if (dayBook.getSpends() == null) dayBook.setSpends(java.math.BigDecimal.ZERO);
+                if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(java.math.BigDecimal.ZERO);
+                if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
+                if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(java.math.BigDecimal.ZERO);
+                
+                java.math.BigDecimal newClosing = dayBook.getOpeningBalance()
+                        .add(dayBook.getCollections())
+                        .add(dayBook.getIncomingTransfers())
+                        .subtract(dayBook.getSpends())
+                        .subtract(dayBook.getLoansDisbursed())
+                        .subtract(dayBook.getOutgoingTransfers())
+                        .subtract(dayBook.getOfficeRemittance());
+                
+                dayBook.setClosingBalance(newClosing);
+                dayBookRepository.save(dayBook);
+            });
+        }
+        
         return mapToResponse(saved);
     }
 

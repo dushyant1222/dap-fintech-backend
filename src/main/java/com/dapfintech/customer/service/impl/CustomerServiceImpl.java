@@ -431,11 +431,6 @@ public class CustomerServiceImpl
         
         Customer customer = customerMapper.toEntity(request);
 
-        customer.setCustomerCode(
-                generateCustomerCode()
-        );
-
-        
         Authentication authentication =
                 SecurityContextHolder
                         .getContext()
@@ -484,6 +479,10 @@ public class CustomerServiceImpl
                 );
             }
         }
+        
+        customer.setCustomerCode(
+                generateCustomerCode(customer.getMarket())
+        );
         
 
         Customer savedCustomer =
@@ -902,8 +901,18 @@ public class CustomerServiceImpl
                 );
     }
 
-    private String generateCustomerCode() {
-        long count = customerRepository.count();
-        return String.format("DAP-CUST-%03d", count + 1);
+    private String generateCustomerCode(Market market) {
+        String marketPrefix = "NA";
+        long count = 0;
+        
+        if (market != null && market.getMarketName() != null && !market.getMarketName().trim().isEmpty()) {
+            String mName = market.getMarketName().trim().toUpperCase();
+            marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
+            count = customerRepository.countByMarketId(market.getId());
+        } else {
+            count = customerRepository.count();
+        }
+        
+        return String.format("CUST-%s-%d", marketPrefix, count + 1);
     }
 }
