@@ -14,6 +14,7 @@ import com.dapfintech.loan.repository.LoanRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
@@ -25,6 +26,7 @@ public class DataMigrationRunner implements CommandLineRunner {
     private final LoanRepository loanRepository;
 
     @Override
+    @Transactional
     public void run(String... args) throws Exception {
         log.info("Starting Data Migration for Sequential IDs...");
 
