@@ -107,6 +107,11 @@ public class EnquiryServiceImpl implements EnquiryService {
 
         EnquiryStatus oldStatus = enquiry.getStatus();
         enquiry.setStatus(request.getStatus());
+        enquiry.setRemarks(request.getRemarks());
+        
+        if (request.getStatus() == EnquiryStatus.APPROVED && request.getApprovedLoanAmount() != null) {
+            enquiry.setApprovedLoanAmount(request.getApprovedLoanAmount());
+        }
 
         EnquiryHistory history = EnquiryHistory.builder()
                 .previousStatus(oldStatus)

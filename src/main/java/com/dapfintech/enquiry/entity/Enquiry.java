@@ -79,6 +79,9 @@ public class Enquiry extends BaseEntity {
     @Column(name = "loan_demand_amount", precision = 15, scale = 2)
     private BigDecimal loanDemandAmount;
 
+    @Column(name = "approved_loan_amount", precision = 15, scale = 2)
+    private BigDecimal approvedLoanAmount;
+
     @Column(columnDefinition = "TEXT")
     private String remarks;
 

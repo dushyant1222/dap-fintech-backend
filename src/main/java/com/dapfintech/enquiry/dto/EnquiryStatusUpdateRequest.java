@@ -12,4 +12,6 @@ public class EnquiryStatusUpdateRequest {
 
     @NotBlank(message = "Remarks are required for status change")
     private String remarks;
+    
+    private java.math.BigDecimal approvedLoanAmount;
 }

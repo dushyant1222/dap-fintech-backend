@@ -76,6 +76,7 @@ public class EnquiryMapper {
         response.setGpsLatitude(enquiry.getGpsLatitude());
         response.setGpsLongitude(enquiry.getGpsLongitude());
         response.setLoanDemandAmount(enquiry.getLoanDemandAmount());
+        response.setApprovedLoanAmount(enquiry.getApprovedLoanAmount());
         response.setRemarks(enquiry.getRemarks());
         response.setStatus(enquiry.getStatus());
         response.setCurrentAddress(enquiry.getCurrentAddress().getAddressLine());
