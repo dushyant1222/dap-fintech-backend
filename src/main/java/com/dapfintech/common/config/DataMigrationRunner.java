@@ -62,6 +62,9 @@ public class DataMigrationRunner implements CommandLineRunner {
         long globalCounter = 0;
         
         for (Customer cust : customers) {
+            if (cust.getCustomerCode() != null && !cust.getCustomerCode().isEmpty()) {
+                continue;
+            }
             String marketPrefix = "NA";
             long count = 0;
             if (cust.getMarket() != null && cust.getMarket().getMarketName() != null && !cust.getMarket().getMarketName().trim().isEmpty()) {
@@ -83,6 +86,10 @@ public class DataMigrationRunner implements CommandLineRunner {
             long loanCount = 0;
             for (Loan loan : loans) {
                 if (loan.getCustomer() != null && loan.getCustomer().getId().equals(cust.getId())) {
+                    if (loan.getLoanCode() != null && !loan.getLoanCode().isEmpty()) {
+                        loanCount++;
+                        continue;
+                    }
                     String typePrefix = loan.getLoanType() == com.dapfintech.loan.enums.LoanType.REGULAR ? "RLN" : "ELN";
                     String custPrefix = "NA";
                     if (cust.getFirstName() != null && !cust.getFirstName().trim().isEmpty()) {
