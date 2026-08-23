@@ -15,5 +15,7 @@ public interface ReportingService {
     
     LedgerPreviewDto getLedgerPreview(UUID loanId);
     
+    ByteArrayInputStream generateEmployeeDaybookExcel(UUID employeeId, LocalDate date);
+    
     ByteArrayInputStream generateEmployeeDaybookPdf(UUID employeeId, LocalDate date);
 }

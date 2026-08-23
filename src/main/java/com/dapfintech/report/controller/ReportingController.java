@@ -3,6 +3,7 @@ package com.dapfintech.report.controller;
 import com.dapfintech.report.dto.LedgerPreviewDto;
 import com.dapfintech.report.service.ReportingService;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,45 +25,45 @@ public class ReportingController {
     }
 
     @GetMapping("/collection/excel")
-    public ResponseEntity<InputStreamResource> downloadCollectionExcel(
+    public ResponseEntity<Resource> downloadCollectionExcel(
             @RequestParam(required = false) UUID marketId,
-            @RequestParam(required = false) UUID customerId) {
+            @RequestParam(required = false) UUID customerId) throws Exception {
             
         ByteArrayInputStream stream = reportingService.generateCollectionReportExcel(marketId, customerId);
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Content-Disposition", "attachment; filename=collection_report.xlsx");
+        byte[] bytes = stream.readAllBytes();
         
         return ResponseEntity
                 .ok()
-                .headers(headers)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"collection_report.xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .body(new InputStreamResource(stream));
+                .contentLength(bytes.length)
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
     }
 
     @GetMapping("/ledger/excel")
-    public ResponseEntity<InputStreamResource> downloadLedgerExcel(@RequestParam UUID loanId) {
+    public ResponseEntity<Resource> downloadLedgerExcel(@RequestParam UUID loanId) throws Exception {
         ByteArrayInputStream stream = reportingService.generateLedgerReportExcel(loanId);
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Content-Disposition", "attachment; filename=ledger_report.xlsx");
+        byte[] bytes = stream.readAllBytes();
         
         return ResponseEntity
                 .ok()
-                .headers(headers)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"ledger_report.xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .body(new InputStreamResource(stream));
+                .contentLength(bytes.length)
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
     }
 
     @GetMapping("/ledger/pdf")
-    public ResponseEntity<InputStreamResource> downloadLedgerPdf(@RequestParam UUID loanId) {
+    public ResponseEntity<Resource> downloadLedgerPdf(@RequestParam UUID loanId) throws Exception {
         ByteArrayInputStream stream = reportingService.generateLedgerReportPdf(loanId);
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Content-Disposition", "attachment; filename=ledger_report.pdf");
+        byte[] bytes = stream.readAllBytes();
         
         return ResponseEntity
                 .ok()
-                .headers(headers)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"ledger_report.pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
-                .body(new InputStreamResource(stream));
+                .contentLength(bytes.length)
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
     }
 
     @GetMapping("/ledger/preview")
@@ -71,19 +72,36 @@ public class ReportingController {
     }
 
     @GetMapping("/daybook/pdf")
-    public ResponseEntity<InputStreamResource> downloadDaybookPdf(
+    public ResponseEntity<Resource> downloadDaybookPdf(
             @RequestParam UUID employeeId,
-            @RequestParam String date) {
+            @RequestParam String date) throws Exception {
         
         LocalDate parsedDate = LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE);
         ByteArrayInputStream stream = reportingService.generateEmployeeDaybookPdf(employeeId, parsedDate);
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Content-Disposition", "attachment; filename=daybook_report.pdf");
+        byte[] bytes = stream.readAllBytes();
         
         return ResponseEntity
                 .ok()
-                .headers(headers)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"daybook_report.pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
-                .body(new InputStreamResource(stream));
+                .contentLength(bytes.length)
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
+    }
+
+    @GetMapping("/daybook/excel")
+    public ResponseEntity<Resource> downloadDaybookExcel(
+            @RequestParam UUID employeeId,
+            @RequestParam String date) throws Exception {
+        
+        LocalDate parsedDate = LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE);
+        ByteArrayInputStream stream = reportingService.generateEmployeeDaybookExcel(employeeId, parsedDate);
+        byte[] bytes = stream.readAllBytes();
+        
+        return ResponseEntity
+                .ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"daybook_report.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .contentLength(bytes.length)
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
     }
 }

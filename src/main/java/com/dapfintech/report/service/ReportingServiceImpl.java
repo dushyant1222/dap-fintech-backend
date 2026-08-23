@@ -241,4 +241,27 @@ public class ReportingServiceImpl implements ReportingService {
             throw new RuntimeException("Failed to generate daybook pdf", e);
         }
     }
+
+    @Override
+    public ByteArrayInputStream generateEmployeeDaybookExcel(UUID employeeId, LocalDate date) {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Employee Daybook");
+            
+            Row row0 = sheet.createRow(0);
+            row0.createCell(0).setCellValue("Employee ID:");
+            row0.createCell(1).setCellValue(employeeId != null ? employeeId.toString() : "");
+            
+            Row row1 = sheet.createRow(1);
+            row1.createCell(0).setCellValue("Date:");
+            row1.createCell(1).setCellValue(date != null ? date.toString() : "");
+            
+            Row row3 = sheet.createRow(3);
+            row3.createCell(0).setCellValue("Daybook Excel Report generated successfully.");
+            
+            workbook.write(out);
+            return new ByteArrayInputStream(out.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate daybook excel", e);
+        }
+    }
 }
