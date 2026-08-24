@@ -29,6 +29,8 @@ public class CreateCustomerRequest {
 
     private Gender gender;
 
+    private UUID enquiryId;
+
     private String aadhaarNumber;
 
     private String panNumber;

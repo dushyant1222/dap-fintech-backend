@@ -40,6 +40,22 @@ public class ReportingController {
                 .body(new org.springframework.core.io.ByteArrayResource(bytes));
     }
 
+    @GetMapping("/collection/pdf")
+    public ResponseEntity<Resource> downloadCollectionPdf(
+            @RequestParam(required = false) UUID marketId,
+            @RequestParam(required = false) UUID customerId) throws Exception {
+            
+        ByteArrayInputStream stream = reportingService.generateCollectionReportPdf(marketId, customerId);
+        byte[] bytes = stream.readAllBytes();
+        
+        return ResponseEntity
+                .ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"collection_report.pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(bytes.length)
+                .body(new org.springframework.core.io.ByteArrayResource(bytes));
+    }
+
     @GetMapping("/ledger/excel")
     public ResponseEntity<Resource> downloadLedgerExcel(@RequestParam UUID loanId) throws Exception {
         ByteArrayInputStream stream = reportingService.generateLedgerReportExcel(loanId);

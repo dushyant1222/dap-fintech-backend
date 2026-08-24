@@ -71,6 +71,7 @@ public class CustomerServiceImpl
     private final GuarantorService guarantorService;
     private final CustomerHistoryService customerHistoryService;
     private final DocumentService documentService;
+    private final com.dapfintech.enquiry.repository.EnquiryRepository enquiryRepository;
     private static final Set<LoanStatus> BLOCKING_LOAN_STATUSES =
             Set.of(
                     LoanStatus.ACTIVE,
@@ -483,10 +484,24 @@ public class CustomerServiceImpl
         customer.setCustomerCode(
                 generateCustomerCode(customer.getMarket())
         );
-        
 
-        Customer savedCustomer =
-                customerRepository.save(customer);
+        Customer savedCustomer = customerRepository.save(customer);
+
+        if (request.getEnquiryId() != null) {
+            com.dapfintech.enquiry.entity.Enquiry enquiry = enquiryRepository.findById(request.getEnquiryId()).orElse(null);
+            if (enquiry != null) {
+                enquiry.setStatus(com.dapfintech.enquiry.enums.EnquiryStatus.CONVERTED);
+                com.dapfintech.enquiry.entity.EnquiryHistory history = com.dapfintech.enquiry.entity.EnquiryHistory.builder()
+                        .previousStatus(com.dapfintech.enquiry.enums.EnquiryStatus.APPROVED)
+                        .newStatus(com.dapfintech.enquiry.enums.EnquiryStatus.CONVERTED)
+                        .remarks("Converted to Customer ID: " + savedCustomer.getId())
+                        .actionBy(employee)
+                        .build();
+                enquiry.addHistory(history);
+                enquiryRepository.save(enquiry);
+            }
+        }
+
         CreateAddressRequest currentAddress =
                 new CreateAddressRequest();
 
