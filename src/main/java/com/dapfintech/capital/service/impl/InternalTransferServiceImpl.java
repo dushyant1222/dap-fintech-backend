@@ -61,8 +61,6 @@ public class InternalTransferServiceImpl implements InternalTransferService {
 
     @Override
     @Transactional
-        @Override
-    @Transactional
     public InternalTransferResponse acceptTransfer(UUID transferId) {
         UUID currentUserId = securityUtils.getCurrentUserId();
         
