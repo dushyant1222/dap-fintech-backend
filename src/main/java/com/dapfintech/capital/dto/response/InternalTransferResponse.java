@@ -20,4 +20,5 @@ public class InternalTransferResponse {
     private LocalDateTime transferDate;
     private String category;
     private String remarks;
+    private String transferMode;
 }

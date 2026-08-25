@@ -54,6 +54,10 @@ public class InternalTransfer extends BaseEntity {
     @Column(name = "status", nullable = false)
     private TransferStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transfer_mode")
+    private com.dapfintech.capital.enums.TransferMode transferMode = com.dapfintech.capital.enums.TransferMode.ONLINE;
+
     @Column(name = "transfer_date", nullable = false)
     private LocalDateTime transferDate;
 

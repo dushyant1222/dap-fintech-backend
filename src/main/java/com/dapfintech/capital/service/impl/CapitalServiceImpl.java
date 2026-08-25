@@ -221,13 +221,12 @@ public class CapitalServiceImpl implements CapitalService {
         List<Loan> loans = loanRepository.findAll();
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy");
-        // Helper to hold running totals for each date
+                // Helper to hold running totals for each date
         class DayTotals {
             BigDecimal capIn = BigDecimal.ZERO;
             BigDecimal disbursed = BigDecimal.ZERO;
             BigDecimal collected = BigDecimal.ZERO;
-            BigDecimal settled = BigDecimal.ZERO;
-            BigDecimal exp = BigDecimal.ZERO;
+            BigDecimal interest = BigDecimal.ZERO;
         }
 
         Map<String, DayTotals> totalsMap = new HashMap<>();
@@ -245,7 +244,7 @@ public class CapitalServiceImpl implements CapitalService {
             }
         }
 
-        // 2. Process Loans (Disbursements)
+        // 2. Process Loans (Disbursements and Interest)
         for (Loan l : loans) {
             if (l.getApplicationDate() != null && filterDate(l.getApplicationDate().toLocalDate(), filter)) {
                 if (filter.getMarketId() == null || (l.getCustomer() != null && l.getCustomer().getMarket() != null && filter.getMarketId().equals(l.getCustomer().getMarket().getId()))) {
@@ -253,6 +252,11 @@ public class CapitalServiceImpl implements CapitalService {
                     BigDecimal p = l.getApprovedAmount() != null ? l.getApprovedAmount() : (l.getLoanAmount() != null ? l.getLoanAmount() : BigDecimal.ZERO);
                     totalsMap.computeIfAbsent(key, k -> new DayTotals()).disbursed = 
                         totalsMap.get(key).disbursed.add(p);
+                    
+                    if (l.getInterestRate() != null) {
+                        BigDecimal interestVal = p.multiply(l.getInterestRate()).divide(new BigDecimal("100"), java.math.RoundingMode.HALF_UP);
+                        totalsMap.get(key).interest = totalsMap.get(key).interest.add(interestVal);
+                    }
                 }
             }
         }
@@ -268,37 +272,15 @@ public class CapitalServiceImpl implements CapitalService {
             }
         }
 
-        // 4. Process Settlements
-        for (CashSettlement cs : settlements) {
-            if (cs.getSettlementDate() != null && filterDate(cs.getSettlementDate().toLocalDate(), filter)) {
-                if (filter.getEmployeeId() == null || (cs.getEmployee() != null && filter.getEmployeeId().equals(cs.getEmployee().getId()))) {
-                    String key = cs.getSettlementDate().format(formatter);
-                    totalsMap.computeIfAbsent(key, k -> new DayTotals()).settled = 
-                        totalsMap.get(key).settled.add(cs.getAmountSettled() != null ? cs.getAmountSettled() : BigDecimal.ZERO);
-                }
-            }
-        }
-
-        // 5. Process Expenses
-        for (Expense e : expenses) {
-            if (e.getExpenseDate() != null && filterDate(e.getExpenseDate().toLocalDate(), filter)) {
-                if (filter.getEmployeeId() == null || (e.getEmployee() != null && filter.getEmployeeId().equals(e.getEmployee().getId()))) {
-                    String key = e.getExpenseDate().format(formatter);
-                    totalsMap.computeIfAbsent(key, k -> new DayTotals()).exp = 
-                        totalsMap.get(key).exp.add(e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO);
-                }
-            }
-        }
-
-        // Now build the response rows (O(Dates) instead of O(Dates * Rows))
+        // Build Response
         for (Map.Entry<String, DayTotals> entry : totalsMap.entrySet()) {
             String key = entry.getKey();
             DayTotals t = entry.getValue();
 
-            BigDecimal pendingEmp = t.collected.subtract(t.settled);
-            if (pendingEmp.compareTo(BigDecimal.ZERO) < 0) pendingEmp = BigDecimal.ZERO;
+            // Calculate pending employee balance purely as a market proxy or omit if not needed
+            BigDecimal pendingEmp = BigDecimal.ZERO; 
             
-            BigDecimal netEarn = t.collected.subtract(t.exp);
+            BigDecimal netEarn = t.interest; // Simplified net earnings as interest
             BigDecimal marketBal = t.disbursed.subtract(t.collected);
             if (marketBal.compareTo(BigDecimal.ZERO) < 0) marketBal = BigDecimal.ZERO;
 
@@ -308,20 +290,18 @@ public class CapitalServiceImpl implements CapitalService {
                     .disbursedAmount(t.disbursed)
                     .marketBalance(marketBal)
                     .collectedAmount(t.collected)
-                    .settledAmount(t.settled)
                     .pendingEmployeeBalance(pendingEmp)
-                    .expenses(t.exp)
+                    .interest(t.interest)
                     .netEarnings(netEarn)
                     .build());
         }
 
-
         DateTimeFormatter sortFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy");
         rows.sort((r1, r2) -> {
             try {
-                LocalDate d1 = LocalDate.parse(r1.getGroupLabel(), sortFormatter);
-                LocalDate d2 = LocalDate.parse(r2.getGroupLabel(), sortFormatter);
-                return d2.compareTo(d1); // Newest first
+                java.time.LocalDate d1 = java.time.LocalDate.parse(r1.getGroupLabel(), sortFormatter);
+                java.time.LocalDate d2 = java.time.LocalDate.parse(r2.getGroupLabel(), sortFormatter);
+                return d2.compareTo(d1);
             } catch (Exception e) {
                 return 0;
             }
@@ -334,10 +314,9 @@ public class CapitalServiceImpl implements CapitalService {
                     .disbursedAmount(summary.getTotalDisbursedPrincipal() != null ? summary.getTotalDisbursedPrincipal() : BigDecimal.ZERO)
                     .marketBalance(summary.getBalanceInMarket() != null ? summary.getBalanceInMarket() : BigDecimal.ZERO)
                     .collectedAmount(summary.getTotalCollections() != null ? summary.getTotalCollections() : BigDecimal.ZERO)
-                    .settledAmount(summary.getTotalSettledCash() != null ? summary.getTotalSettledCash() : BigDecimal.ZERO)
                     .pendingEmployeeBalance(summary.getBalanceOnEmployees() != null ? summary.getBalanceOnEmployees() : BigDecimal.ZERO)
-                    .expenses(summary.getTotalExpenses() != null ? summary.getTotalExpenses() : BigDecimal.ZERO)
-                    .netEarnings((summary.getTotalCollections() != null ? summary.getTotalCollections() : BigDecimal.ZERO).subtract(summary.getTotalExpenses() != null ? summary.getTotalExpenses() : BigDecimal.ZERO))
+                    .interest(BigDecimal.ZERO)
+                    .netEarnings(BigDecimal.ZERO)
                     .build());
         }
 
@@ -346,6 +325,7 @@ public class CapitalServiceImpl implements CapitalService {
                 .rows(rows)
                 .build();
     }
+
 
     private boolean filterDate(LocalDate date, PivotFilterRequest filter) {
         if (date == null) return false;
@@ -362,3 +342,4 @@ public class CapitalServiceImpl implements CapitalService {
         return value != null ? value : BigDecimal.ZERO;
     }
 }
+

@@ -19,6 +19,8 @@ public class DayBookResponse {
     private BigDecimal loansDisbursed;
     private BigDecimal outgoingTransfers;
     private BigDecimal officeRemittance;
+    private BigDecimal cashIncomingTransfers;
+    private BigDecimal cashOutgoingTransfers;
     private BigDecimal closingBalance;
     private DayBookStatus status;
 }

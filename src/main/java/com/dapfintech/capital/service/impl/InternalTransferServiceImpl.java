@@ -48,6 +48,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 .status(TransferStatus.PENDING)
                 .transferDate(LocalDateTime.now())
                 .category(request.getCategory())
+                .transferMode(request.getTransferMode() != null ? com.dapfintech.capital.enums.TransferMode.valueOf(request.getTransferMode()) : com.dapfintech.capital.enums.TransferMode.ONLINE)
                 .remarks(request.getRemarks())
                 .build();
 
@@ -59,6 +60,8 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     }
 
     @Override
+    @Transactional
+        @Override
     @Transactional
     public InternalTransferResponse acceptTransfer(UUID transferId) {
         UUID currentUserId = securityUtils.getCurrentUserId();
@@ -81,28 +84,14 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         if (transfer.getReceiver().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             java.time.LocalDate today = java.time.LocalDate.now();
             dayBookRepository.findByEmployeeIdAndDate(currentUserId, today).ifPresent(dayBook -> {
-                if (dayBook.getIncomingTransfers() == null) {
-                    dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
+                if (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH) {
+                    if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(java.math.BigDecimal.ZERO);
+                    dayBook.setCashIncomingTransfers(dayBook.getCashIncomingTransfers().add(transfer.getAmount()));
+                } else {
+                    if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
+                    dayBook.setIncomingTransfers(dayBook.getIncomingTransfers().add(transfer.getAmount()));
                 }
-                dayBook.setIncomingTransfers(dayBook.getIncomingTransfers().add(transfer.getAmount()));
-                
-                // Recalculate closing balance
-                if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(java.math.BigDecimal.ZERO);
-                if (dayBook.getCollections() == null) dayBook.setCollections(java.math.BigDecimal.ZERO);
-                if (dayBook.getSpends() == null) dayBook.setSpends(java.math.BigDecimal.ZERO);
-                if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(java.math.BigDecimal.ZERO);
-                if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
-                if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(java.math.BigDecimal.ZERO);
-                
-                java.math.BigDecimal newClosing = dayBook.getOpeningBalance()
-                        .add(dayBook.getCollections())
-                        .add(dayBook.getIncomingTransfers())
-                        .subtract(dayBook.getSpends())
-                        .subtract(dayBook.getLoansDisbursed())
-                        .subtract(dayBook.getOutgoingTransfers())
-                        .subtract(dayBook.getOfficeRemittance());
-                
-                dayBook.setClosingBalance(newClosing);
+                updateDaybookClosingBalance(dayBook);
                 dayBookRepository.save(dayBook);
             });
         }
@@ -111,34 +100,44 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         if (transfer.getSender().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             java.time.LocalDate today = java.time.LocalDate.now();
             dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), today).ifPresent(dayBook -> {
-                if (dayBook.getOutgoingTransfers() == null) {
-                    dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
+                if (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH) {
+                    if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(java.math.BigDecimal.ZERO);
+                    dayBook.setCashOutgoingTransfers(dayBook.getCashOutgoingTransfers().add(transfer.getAmount()));
+                } else {
+                    if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
+                    dayBook.setOutgoingTransfers(dayBook.getOutgoingTransfers().add(transfer.getAmount()));
                 }
-                dayBook.setOutgoingTransfers(dayBook.getOutgoingTransfers().add(transfer.getAmount()));
-                
-                // Recalculate closing balance
-                if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(java.math.BigDecimal.ZERO);
-                if (dayBook.getCollections() == null) dayBook.setCollections(java.math.BigDecimal.ZERO);
-                if (dayBook.getSpends() == null) dayBook.setSpends(java.math.BigDecimal.ZERO);
-                if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(java.math.BigDecimal.ZERO);
-                if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
-                if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(java.math.BigDecimal.ZERO);
-                
-                java.math.BigDecimal newClosing = dayBook.getOpeningBalance()
-                        .add(dayBook.getCollections())
-                        .add(dayBook.getIncomingTransfers())
-                        .subtract(dayBook.getSpends())
-                        .subtract(dayBook.getLoansDisbursed())
-                        .subtract(dayBook.getOutgoingTransfers())
-                        .subtract(dayBook.getOfficeRemittance());
-                
-                dayBook.setClosingBalance(newClosing);
+                updateDaybookClosingBalance(dayBook);
                 dayBookRepository.save(dayBook);
             });
         }
         
         return mapToResponse(saved);
     }
+
+    private void updateDaybookClosingBalance(DayBook dayBook) {
+        if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(java.math.BigDecimal.ZERO);
+        if (dayBook.getCollections() == null) dayBook.setCollections(java.math.BigDecimal.ZERO);
+        if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
+        if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(java.math.BigDecimal.ZERO);
+        if (dayBook.getSpends() == null) dayBook.setSpends(java.math.BigDecimal.ZERO);
+        if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(java.math.BigDecimal.ZERO);
+        if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
+        if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(java.math.BigDecimal.ZERO);
+        if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(java.math.BigDecimal.ZERO);
+
+        java.math.BigDecimal newClosing = dayBook.getOpeningBalance()
+                .add(dayBook.getCollections())
+                .add(dayBook.getIncomingTransfers())
+                .add(dayBook.getCashIncomingTransfers())
+                .subtract(dayBook.getSpends())
+                .subtract(dayBook.getLoansDisbursed())
+                .subtract(dayBook.getOutgoingTransfers())
+                .subtract(dayBook.getCashOutgoingTransfers())
+                .subtract(dayBook.getOfficeRemittance());
+        dayBook.setClosingBalance(newClosing);
+    }
+
 
     @Override
     @Transactional
@@ -203,3 +202,4 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 .build();
     }
 }
+

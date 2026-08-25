@@ -27,6 +27,8 @@ import com.dapfintech.report.projection.TopCollectorProjection;
 public interface LoanCollectionRepository extends JpaRepository<LoanCollection, UUID> {
 
     List<LoanCollection> findByLoanId(UUID loanId);
+
+    List<LoanCollection> findAllByCollectionDateBetween(java.time.LocalDateTime start, java.time.LocalDateTime end);
     
     List<LoanCollection> findAllByOrderByCollectionDateDesc();
     

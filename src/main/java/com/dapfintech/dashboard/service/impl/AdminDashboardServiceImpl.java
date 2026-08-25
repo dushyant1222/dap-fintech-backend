@@ -243,34 +243,60 @@ public class AdminDashboardServiceImpl
         String profitTrendText = "+14.8% vs previous period";
 
         // ── 8. Chart data ─────────────────────────────────────────────────────
+                //  8. Chart data 
         List<String> chartLabels = new ArrayList<>();
         List<BigDecimal> chartValues = new ArrayList<>();
+        
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
 
         if ("Today".equalsIgnoreCase(timeframe)) {
-            chartLabels.addAll(List.of("9AM", "11AM", "1PM", "3PM", "5PM", "7PM", "9PM"));
-            for (int i = 0; i < 7; i++) {
-                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(7000), 1, java.math.RoundingMode.HALF_UP);
-                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(5.0) : v);
+            chartLabels.addAll(List.of("12AM", "4AM", "8AM", "12PM", "4PM", "8PM"));
+            BigDecimal[] buckets = new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            java.time.LocalDateTime start = now.with(java.time.LocalTime.MIN);
+            List<com.dapfintech.loan.entity.LoanCollection> cols = collectionRepository.findAllByCollectionDateBetween(start, now.with(java.time.LocalTime.MAX));
+            for(com.dapfintech.loan.entity.LoanCollection lc : cols) {
+                int h = lc.getCollectionDate().getHour();
+                int idx = h / 4;
+                if(idx > 5) idx = 5;
+                buckets[idx] = buckets[idx].add(orZero(lc.getCollectedAmount()));
             }
+            chartValues.addAll(java.util.Arrays.asList(buckets));
         } else if ("Week".equalsIgnoreCase(timeframe)) {
             chartLabels.addAll(List.of("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"));
-            for (int i = 0; i < 7; i++) {
-                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(7000), 1, java.math.RoundingMode.HALF_UP);
-                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(15.0 + i * 4) : v);
+            BigDecimal[] buckets = new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            java.time.LocalDateTime start = now.minusDays(now.getDayOfWeek().getValue() - 1).with(java.time.LocalTime.MIN);
+            List<com.dapfintech.loan.entity.LoanCollection> cols = collectionRepository.findAllByCollectionDateBetween(start, now.with(java.time.LocalTime.MAX));
+            for(com.dapfintech.loan.entity.LoanCollection lc : cols) {
+                int d = lc.getCollectionDate().getDayOfWeek().getValue() - 1; // 0 to 6
+                if(d >= 0 && d < 7) {
+                    buckets[d] = buckets[d].add(orZero(lc.getCollectedAmount()));
+                }
             }
+            chartValues.addAll(java.util.Arrays.asList(buckets));
         } else if ("Month".equalsIgnoreCase(timeframe)) {
-            chartLabels.addAll(List.of("Week 1", "Week 2", "Week 3", "Week 4"));
-            for (int i = 0; i < 4; i++) {
-                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(4000), 1, java.math.RoundingMode.HALF_UP);
-                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(45.0 + i * 25) : v);
+            chartLabels.addAll(List.of("Week 1", "Week 2", "Week 3", "Week 4", "Week 5"));
+            BigDecimal[] buckets = new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            java.time.LocalDateTime start = now.withDayOfMonth(1).with(java.time.LocalTime.MIN);
+            List<com.dapfintech.loan.entity.LoanCollection> cols = collectionRepository.findAllByCollectionDateBetween(start, now.with(java.time.LocalTime.MAX));
+            for(com.dapfintech.loan.entity.LoanCollection lc : cols) {
+                int d = lc.getCollectionDate().getDayOfMonth();
+                int idx = (d - 1) / 7;
+                if(idx > 4) idx = 4;
+                buckets[idx] = buckets[idx].add(orZero(lc.getCollectedAmount()));
             }
+            chartValues.addAll(java.util.Arrays.asList(buckets));
         } else {
-            chartLabels.addAll(List.of("Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"));
-            for (int i = 0; i < 12; i++) {
-                BigDecimal v = totalCollections.divide(BigDecimal.valueOf(12000), 1, java.math.RoundingMode.HALF_UP);
-                chartValues.add(v.compareTo(BigDecimal.ONE) < 0 ? BigDecimal.valueOf(120.0 + i * 35) : v);
+            chartLabels.addAll(List.of("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"));
+            BigDecimal[] buckets = new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            java.time.LocalDateTime start = now.withDayOfYear(1).with(java.time.LocalTime.MIN);
+            List<com.dapfintech.loan.entity.LoanCollection> cols = collectionRepository.findAllByCollectionDateBetween(start, now.with(java.time.LocalTime.MAX));
+            for(com.dapfintech.loan.entity.LoanCollection lc : cols) {
+                int m = lc.getCollectionDate().getMonthValue() - 1; // 0 to 11
+                if(m >= 0 && m < 12) {
+                    buckets[m] = buckets[m].add(orZero(lc.getCollectedAmount()));
+                }
             }
+            chartValues.addAll(java.util.Arrays.asList(buckets));
         }
 
         return BusinessGrowthResponse.builder()

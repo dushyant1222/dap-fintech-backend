@@ -302,25 +302,30 @@ public class DayBookServiceImpl implements DayBookService {
         return mapToResponse(dayBook);
     }
     
-    private BigDecimal calculateClosingBalance(DayBook dayBook) {
+        private BigDecimal calculateClosingBalance(DayBook dayBook) {
         if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(BigDecimal.ZERO);
         if (dayBook.getCollections() == null) dayBook.setCollections(BigDecimal.ZERO);
         if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(BigDecimal.ZERO);
+        if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(BigDecimal.ZERO);
         if (dayBook.getSpends() == null) dayBook.setSpends(BigDecimal.ZERO);
         if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(BigDecimal.ZERO);
         if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(BigDecimal.ZERO);
+        if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(BigDecimal.ZERO);
         if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(BigDecimal.ZERO);
         
         return dayBook.getOpeningBalance()
                 .add(dayBook.getCollections())
                 .add(dayBook.getIncomingTransfers())
+                .add(dayBook.getCashIncomingTransfers())
                 .subtract(dayBook.getSpends())
                 .subtract(dayBook.getLoansDisbursed())
                 .subtract(dayBook.getOutgoingTransfers())
+                .subtract(dayBook.getCashOutgoingTransfers())
                 .subtract(dayBook.getOfficeRemittance());
     }
+
     
-    private DayBookResponse mapToResponse(DayBook dayBook) {
+        private DayBookResponse mapToResponse(DayBook dayBook) {
         DayBookResponse response = new DayBookResponse();
         response.setId(dayBook.getId());
         response.setEmployeeId(dayBook.getEmployeeId());
@@ -328,14 +333,17 @@ public class DayBookServiceImpl implements DayBookService {
         response.setOpeningBalance(dayBook.getOpeningBalance());
         response.setCollections(dayBook.getCollections());
         response.setIncomingTransfers(dayBook.getIncomingTransfers());
+        response.setCashIncomingTransfers(dayBook.getCashIncomingTransfers());
         response.setSpends(dayBook.getSpends());
         response.setLoansDisbursed(dayBook.getLoansDisbursed());
         response.setOutgoingTransfers(dayBook.getOutgoingTransfers());
+        response.setCashOutgoingTransfers(dayBook.getCashOutgoingTransfers());
         response.setOfficeRemittance(dayBook.getOfficeRemittance());
         response.setClosingBalance(dayBook.getClosingBalance());
         response.setStatus(dayBook.getStatus());
         return response;
     }
+
     @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 0 * * ?") // Midnight
     @Transactional
     public void forceClosePendingDayBooks() {
@@ -349,3 +357,5 @@ public class DayBookServiceImpl implements DayBookService {
         }
     }
 }
+
+

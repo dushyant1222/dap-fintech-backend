@@ -18,4 +18,5 @@ public class InternalTransferRequest {
     
     private String category;
     private String remarks;
+    private String transferMode;
 }

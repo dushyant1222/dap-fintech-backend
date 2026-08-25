@@ -12,8 +12,8 @@ public class PivotRowResponse {
     private BigDecimal disbursedAmount;
     private BigDecimal marketBalance;
     private BigDecimal collectedAmount;
-    private BigDecimal settledAmount;
+    
     private BigDecimal pendingEmployeeBalance;
-    private BigDecimal expenses;
+    private BigDecimal interest;
     private BigDecimal netEarnings;
 }
