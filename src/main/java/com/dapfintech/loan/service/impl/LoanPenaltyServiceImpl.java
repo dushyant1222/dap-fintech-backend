@@ -30,6 +30,15 @@ import com.dapfintech.loan.enums.RepaymentStatus;
 import com.dapfintech.loan.repository.LoanClosureRepository;
 import com.dapfintech.loan.repository.LoanRepaymentScheduleRepository;
 import com.dapfintech.loan.repository.LoanRepository;
+
+import com.dapfintech.loan.repository.LoanCollectionRepository;
+import com.dapfintech.loan.entity.LoanCollection;
+import com.dapfintech.loan.enums.CollectionStatus;
+import com.dapfintech.loan.enums.CollectionMode;
+import com.dapfintech.employee.repository.DayBookRepository;
+import com.dapfintech.employee.service.DayBookService;
+
+
 import com.dapfintech.loan.service.LoanPenaltyService;
 import com.dapfintech.security.service.AccessControlService;
 
@@ -45,6 +54,12 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
     private final LoanClosureRepository loanClosureRepository;
     private final UserRepository userRepository;
     private final AccessControlService accessControlService;
+
+    private final LoanCollectionRepository loanCollectionRepository;
+    private final DayBookRepository dayBookRepository;
+    private final DayBookService dayBookService;
+
+
     private final AuditLogService auditLogService;
 
     @Override
@@ -173,6 +188,54 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
             loan.setPenaltyWaivedPercent(request.getWaivedPenaltyPercent());
         } else {
             loan.setPenaltyWaivedPercent(BigDecimal.valueOf(100));
+        }
+
+        
+        // CREATE LOAN COLLECTION FOR THE SETTLEMENT AMOUNT
+        if (request.getSettlementAmountPaid() != null && request.getSettlementAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
+            LoanCollection collection = LoanCollection.builder()
+                    .loan(loan)
+                    .collectedBy(loan.getCreatedBy())
+                    .collectedAmount(request.getSettlementAmountPaid())
+                    .collectionDate(LocalDateTime.now())
+                    .collectionMode(CollectionMode.CASH)
+                    .collectionStatus(CollectionStatus.SUCCESS)
+                    .receiptNumber("SPL-" + System.currentTimeMillis())
+                    .remarks("SPECIAL CLOSURE SETTLEMENT")
+                    .build();
+            loanCollectionRepository.save(collection);
+
+            // UPDATE DAYBOOK OF THE EMPLOYEE WHO CREATED THE LOAN
+            if (loan.getCreatedBy() != null && loan.getCreatedBy().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+                LocalDate today = LocalDate.now();
+                dayBookService.getOrCreateTodayDayBook(loan.getCreatedBy().getId());
+                dayBookRepository.findByEmployeeIdAndDate(loan.getCreatedBy().getId(), today).ifPresent(dayBook -> {
+                    if (dayBook.getCollections() == null) dayBook.setCollections(BigDecimal.ZERO);
+                    dayBook.setCollections(dayBook.getCollections().add(request.getSettlementAmountPaid()));
+                    
+                    if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(BigDecimal.ZERO);
+                    if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(BigDecimal.ZERO);
+                    if (dayBook.getSpends() == null) dayBook.setSpends(BigDecimal.ZERO);
+                    if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(BigDecimal.ZERO);
+                    if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(BigDecimal.ZERO);
+                    if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(BigDecimal.ZERO);
+                    
+                    if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(BigDecimal.ZERO);
+                    if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(BigDecimal.ZERO);
+                    
+                    BigDecimal newClosing = dayBook.getOpeningBalance()
+                            .add(dayBook.getCollections())
+                            .add(dayBook.getIncomingTransfers())
+                            .add(dayBook.getCashIncomingTransfers())
+                            .subtract(dayBook.getSpends())
+                            .subtract(dayBook.getLoansDisbursed())
+                            .subtract(dayBook.getOutgoingTransfers())
+                            .subtract(dayBook.getCashOutgoingTransfers())
+                            .subtract(dayBook.getOfficeRemittance());
+                    dayBook.setClosingBalance(newClosing);
+                    dayBookRepository.save(dayBook);
+                });
+            }
         }
 
         loan.setClosedSpecialCondition(true);
