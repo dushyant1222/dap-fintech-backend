@@ -23,6 +23,19 @@ public class DayBookController {
         return ResponseEntity.ok(response);
     }
     
+    @GetMapping("/today/transactions")
+    public ResponseEntity<java.util.List<com.dapfintech.employee.entity.DayBookTransaction>> getTodayTransactions(
+            @PathVariable UUID employeeId) {
+        return ResponseEntity.ok(dayBookService.getTransactions(employeeId, java.time.LocalDate.now()));
+    }
+
+    @GetMapping("/by-date/transactions")
+    public ResponseEntity<java.util.List<com.dapfintech.employee.entity.DayBookTransaction>> getByDateTransactions(
+            @PathVariable UUID employeeId,
+            @org.springframework.web.bind.annotation.RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        return ResponseEntity.ok(dayBookService.getTransactions(employeeId, date));
+    }
+
     @PostMapping("/today/transactions")
     public ResponseEntity<DayBookResponse> addTransaction(
             @PathVariable UUID employeeId,

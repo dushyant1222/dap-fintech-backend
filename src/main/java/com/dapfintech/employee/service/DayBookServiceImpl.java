@@ -33,6 +33,8 @@ public class DayBookServiceImpl implements DayBookService {
     
     @Autowired
     private InternalTransferRepository internalTransferRepository;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.dapfintech.employee.repository.DayBookTransactionRepository dayBookTransactionRepository;
     
     @Autowired
     private com.dapfintech.employee.repository.MarketDayBookRepository marketDayBookRepository;
@@ -295,6 +297,14 @@ public class DayBookServiceImpl implements DayBookService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+        @Override
+    public java.util.List<com.dapfintech.employee.entity.DayBookTransaction> getTransactions(UUID employeeId, LocalDate date) {
+        java.time.LocalDateTime start = date.atStartOfDay();
+        java.time.LocalDateTime end = date.plusDays(1).atStartOfDay();
+        return dayBookTransactionRepository.findByEmployeeIdAndCreatedAtBetween(employeeId, start, end);
+    }
+    
     @Override
     public DayBookResponse getDayBookByDate(UUID employeeId, LocalDate date) {
         DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date)
