@@ -50,7 +50,7 @@ public class SecurityConfig {
 			    "/v3/api-docs/**",
 			    "/v3/api-docs",
 			    "/swagger-resources/**",
-			    "/webjars/**","/api/v1/files/view/**", "/error")
+			    "/webjars/**", "/api/v1/files/view/**", "/api/v1/files/local/**", "/error")
 		.permitAll().anyRequest().authenticated()).addFilterBefore(authenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
