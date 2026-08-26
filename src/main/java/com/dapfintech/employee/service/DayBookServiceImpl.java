@@ -298,7 +298,6 @@ public class DayBookServiceImpl implements DayBookService {
     }
 
     @Override
-        @Override
     public java.util.List<com.dapfintech.employee.entity.DayBookTransaction> getTransactions(UUID employeeId, LocalDate date) {
         java.time.LocalDateTime start = date.atStartOfDay();
         java.time.LocalDateTime end = date.plusDays(1).atStartOfDay();

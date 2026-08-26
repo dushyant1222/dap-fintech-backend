@@ -152,7 +152,7 @@ public class LoanDisbursementServiceImpl
 
         LocalDate today = LocalDate.now();
         try {
-            com.dapfintech.employee.dto.request.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.request.DayBookTransactionRequest();
+            com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
             dbReq.setType("LOANS_DISBURSED");
             dbReq.setAmount(netDisbursedAmount);
             dbReq.setRemarks("Loan Disbursed: " + loan.getLoanCode());

@@ -1088,7 +1088,7 @@ public class LoanCollectionServiceImpl
         // Update DayBook if collected by an employee
         if (loggedInEmployee != null && loggedInEmployee.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             try {
-                com.dapfintech.employee.dto.request.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.request.DayBookTransactionRequest();
+                com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
                 dbReq.setType("COLLECTIONS");
                 dbReq.setAmount(collection.getCollectedAmount());
                 dbReq.setRemarks("EMI Collected: " + loan.getLoanCode());

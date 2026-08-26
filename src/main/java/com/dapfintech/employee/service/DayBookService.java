@@ -17,4 +17,5 @@ public interface DayBookService {
     DayBookResponse updateDayBook(UUID dayBookId, UpdateDayBookRequest request);
     DayBookResponse getDayBookByDate(UUID employeeId, java.time.LocalDate date);
     List<DayBookResponse> getEmployeeDayBooks(UUID employeeId);
+    java.util.List<com.dapfintech.employee.entity.DayBookTransaction> getTransactions(UUID employeeId, java.time.LocalDate date);
 }

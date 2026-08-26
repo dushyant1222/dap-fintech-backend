@@ -113,7 +113,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                         .shortfallAmount(outstanding)
                         .withinGracePeriod(withinGrace)
                         .compoundPenalty(compoundPenalty)
-                        );
+                        .build());
             }
         }
 
@@ -134,7 +134,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                 .waivedPenaltyAmount(waivedPenaltyAmount)
                 .netPayablePenalty(netPayablePenalty)
                 .totalPayableWithPenalty(totalPayable)
-                ;
+                .build();
     }
 
     @Override
@@ -201,14 +201,19 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                     .collectionMode(CollectionMode.CASH)
                     .collectionStatus(CollectionStatus.SUCCESS)
                     .receiptNumber("SPL-" + System.currentTimeMillis())
+                    .loan(loan)
                     .remarks("SPECIAL CLOSURE SETTLEMENT")
-                    ;
+                    .build();
             loanCollectionRepository.save(collection);
 
             // UPDATE DAYBOOK OF THE EMPLOYEE WHO CREATED THE LOAN
             if (loan.getCreatedBy() != null && loan.getCreatedBy().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
                 try {
-                    dayBookService.addTransaction(loan.getCreatedBy().getId(), "COLLECTIONS", request.getSettlementAmountPaid(), "SPECIAL CLOSURE SETTLEMENT");
+                    com.dapfintech.employee.dto.DayBookTransactionRequest txReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
+                    txReq.setType("COLLECTIONS");
+                    txReq.setAmount(request.getSettlementAmountPaid());
+                    txReq.setRemarks("SPECIAL CLOSURE SETTLEMENT");
+                    dayBookService.addTransaction(loan.getCreatedBy().getId(), txReq);
                 } catch (Exception e) {
                     throw new RuntimeException("Could not add transaction to employee daybook: " + e.getMessage());
                 }
@@ -256,7 +261,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
         loanRepository.save(loan);
 
         auditLogService.log(currentUser.getId().toString(), "CLOSE_LOAN_SPECIAL", "LOAN", loan.getId().toString());
-        return new LoanClosureResponse(true, "Loan closed successfully", null);
+        return LoanClosureResponse.builder().id(savedClosure.getId()).loanId(loan.getId()).closureDate(savedClosure.getClosureDate()).remarks(savedClosure.getRemarks()).build();
     }
 
     private User verifyAdminAccess() {

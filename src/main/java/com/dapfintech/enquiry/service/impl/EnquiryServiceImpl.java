@@ -42,6 +42,7 @@ public class EnquiryServiceImpl implements EnquiryService {
     private final MarketRepository marketRepository;
     private final EnquiryMapper enquiryMapper;
     private final CustomerService customerService;
+    private final com.dapfintech.customer.repository.CustomerRepository customerRepository;
     private final NotificationService notificationService;
 
     @Override
