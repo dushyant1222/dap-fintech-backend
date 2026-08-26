@@ -1,13 +1,28 @@
-import re
+import sys
 
-path = 'src/main/java/com/dapfintech/loan/service/impl/LoanPenaltyServiceImpl.java'
-with open(path, 'r', encoding='utf-8') as f:
-    content = f.read()
+with open('src/main/java/com/dapfintech/loan/service/impl/LoanPenaltyServiceImpl.java', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
 
-# We need to replace the whole closeOnSpecialCondition method
-target_method = r'@Override\s*public LoanClosureResponse closeOnSpecialCondition\(UUID loanId, CloseSpecialLoanRequest request\) \{[\s\S]*?auditLogService\.log\(currentUser\.getId\(\)\.toString\(\), "CLOSE_LOAN_SPECIAL", "LOAN", loan\.getId\(\)\.toString\(\)\);\s*return new LoanClosureResponse\(true, "Loan closed successfully", null\);\s*\}'
+start_idx = -1
+end_idx = -1
 
-new_method = """@Override
+for i, line in enumerate(lines):
+    if "public LoanClosureResponse closeOnSpecialCondition" in line:
+        start_idx = i - 1
+        break
+
+if start_idx != -1:
+    open_brackets = 0
+    for i in range(start_idx + 1, len(lines)):
+        open_brackets += lines[i].count('{') - lines[i].count('}')
+        if open_brackets == 0 and lines[i].strip() == '}':
+            end_idx = i
+            break
+
+print(f"Start: {start_idx}, End: {end_idx}")
+
+if start_idx != -1 and end_idx != -1:
+    new_method = """    @Override
     @Transactional
     public LoanClosureResponse closeOnSpecialCondition(UUID loanId, CloseSpecialLoanRequest request) {
         User currentUser = verifyAdminAccess();
@@ -102,12 +117,12 @@ new_method = """@Override
 
         auditLogService.log(currentUser.getId().toString(), "CLOSE_LOAN_SPECIAL", "LOAN", loan.getId().toString());
         return new LoanClosureResponse(true, "Loan closed successfully", null);
-    }"""
-
-if re.search(target_method, content):
-    content = re.sub(target_method, new_method, content)
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    print("Patched closeOnSpecialCondition successfully")
+    }
+"""
+    with open('src/main/java/com/dapfintech/loan/service/impl/LoanPenaltyServiceImpl.java', 'w', encoding='utf-8') as f:
+        f.writelines(lines[:start_idx])
+        f.write(new_method)
+        f.writelines(lines[end_idx+1:])
+    print("Patched closeOnSpecialCondition successfully using python block replace.")
 else:
-    print("Failed to find target method")
+    print("Failed to find bounds.")

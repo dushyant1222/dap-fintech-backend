@@ -113,7 +113,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                         .shortfallAmount(outstanding)
                         .withinGracePeriod(withinGrace)
                         .compoundPenalty(compoundPenalty)
-                        .build());
+                        );
             }
         }
 
@@ -134,7 +134,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                 .waivedPenaltyAmount(waivedPenaltyAmount)
                 .netPayablePenalty(netPayablePenalty)
                 .totalPayableWithPenalty(totalPayable)
-                .build();
+                ;
     }
 
     @Override
@@ -165,6 +165,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
     }
 
     @Override
+    @Transactional
     public LoanClosureResponse closeOnSpecialCondition(UUID loanId, CloseSpecialLoanRequest request) {
         User currentUser = verifyAdminAccess();
         accessControlService.validateLoanAccess(loanId);
@@ -190,11 +191,10 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
             loan.setPenaltyWaivedPercent(BigDecimal.valueOf(100));
         }
 
-        
         // CREATE LOAN COLLECTION FOR THE SETTLEMENT AMOUNT
         if (request.getSettlementAmountPaid() != null && request.getSettlementAmountPaid().compareTo(BigDecimal.ZERO) > 0) {
             LoanCollection collection = LoanCollection.builder()
-                    .loan(loan)
+                    
                     .collectedBy(loan.getCreatedBy())
                     .collectedAmount(request.getSettlementAmountPaid())
                     .collectionDate(LocalDateTime.now())
@@ -202,39 +202,16 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                     .collectionStatus(CollectionStatus.SUCCESS)
                     .receiptNumber("SPL-" + System.currentTimeMillis())
                     .remarks("SPECIAL CLOSURE SETTLEMENT")
-                    .build();
+                    ;
             loanCollectionRepository.save(collection);
 
             // UPDATE DAYBOOK OF THE EMPLOYEE WHO CREATED THE LOAN
             if (loan.getCreatedBy() != null && loan.getCreatedBy().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
-                LocalDate today = LocalDate.now();
-                dayBookService.getOrCreateTodayDayBook(loan.getCreatedBy().getId());
-                dayBookRepository.findByEmployeeIdAndDate(loan.getCreatedBy().getId(), today).ifPresent(dayBook -> {
-                    if (dayBook.getCollections() == null) dayBook.setCollections(BigDecimal.ZERO);
-                    dayBook.setCollections(dayBook.getCollections().add(request.getSettlementAmountPaid()));
-                    
-                    if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(BigDecimal.ZERO);
-                    if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(BigDecimal.ZERO);
-                    if (dayBook.getSpends() == null) dayBook.setSpends(BigDecimal.ZERO);
-                    if (dayBook.getLoansDisbursed() == null) dayBook.setLoansDisbursed(BigDecimal.ZERO);
-                    if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(BigDecimal.ZERO);
-                    if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(BigDecimal.ZERO);
-                    
-                    if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(BigDecimal.ZERO);
-                    if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(BigDecimal.ZERO);
-                    
-                    BigDecimal newClosing = dayBook.getOpeningBalance()
-                            .add(dayBook.getCollections())
-                            .add(dayBook.getIncomingTransfers())
-                            .add(dayBook.getCashIncomingTransfers())
-                            .subtract(dayBook.getSpends())
-                            .subtract(dayBook.getLoansDisbursed())
-                            .subtract(dayBook.getOutgoingTransfers())
-                            .subtract(dayBook.getCashOutgoingTransfers())
-                            .subtract(dayBook.getOfficeRemittance());
-                    dayBook.setClosingBalance(newClosing);
-                    dayBookRepository.save(dayBook);
-                });
+                try {
+                    dayBookService.addTransaction(loan.getCreatedBy().getId(), "COLLECTIONS", request.getSettlementAmountPaid(), "SPECIAL CLOSURE SETTLEMENT");
+                } catch (Exception e) {
+                    throw new RuntimeException("Could not add transaction to employee daybook: " + e.getMessage());
+                }
             }
         }
 
@@ -242,35 +219,44 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
         loan.setSpecialClosureRemarks(request.getSpecialRemarks());
 
         List<LoanRepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loanId);
+        BigDecimal remainingSettlement = request.getSettlementAmountPaid() != null ? request.getSettlementAmountPaid() : BigDecimal.ZERO;
+
         for (LoanRepaymentSchedule sch : schedules) {
             if (sch.getOutstandingAmount() != null && sch.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0) {
-                sch.setPaidAmount(sch.getInstallmentAmount());
-                sch.setDueAmount(BigDecimal.ZERO);
-                sch.setOutstandingAmount(BigDecimal.ZERO);
-                sch.setRepaymentStatus(RepaymentStatus.PAID);
+                if (remainingSettlement.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal amountToPay = sch.getOutstandingAmount().min(remainingSettlement);
+                    if (sch.getPaidAmount() == null) sch.setPaidAmount(BigDecimal.ZERO);
+                    sch.setPaidAmount(sch.getPaidAmount().add(amountToPay));
+                    sch.setOutstandingAmount(sch.getOutstandingAmount().subtract(amountToPay));
+                    if (sch.getDueAmount() != null) {
+                        sch.setDueAmount(sch.getDueAmount().subtract(amountToPay).max(BigDecimal.ZERO));
+                    }
+                    remainingSettlement = remainingSettlement.subtract(amountToPay);
+                }
+                
+                // If there's still outstanding amount left, we WAIVE it.
+                if (sch.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    sch.setDueAmount(BigDecimal.ZERO);
+                    sch.setOutstandingAmount(BigDecimal.ZERO);
+                    sch.setRepaymentStatus(RepaymentStatus.WAIVED);
+                } else {
+                    sch.setRepaymentStatus(RepaymentStatus.PAID);
+                }
                 scheduleRepository.save(sch);
             }
         }
 
-        LoanClosure closure = LoanClosure.builder()
-                .loan(loan)
-                .closureDate(LocalDateTime.now())
-                .remarks("SPECIAL CONDITION CLOSURE: " + request.getSpecialRemarks() + " [Penalty Waived: " + loan.getPenaltyWaivedPercent() + "%]")
-                .build();
-
+        LoanClosure closure = new LoanClosure();
+        closure.setLoan(loan);
+        closure.setClosureDate(LocalDateTime.now());
+        closure.setRemarks("SPECIAL CONDITION CLOSURE: " + request.getSpecialRemarks() + " [Penalty Waived: " + loan.getPenaltyWaivedPercent() + "%]");
         LoanClosure savedClosure = loanClosureRepository.save(closure);
 
         loan.setLoanStatus(LoanStatus.CLOSED);
         loanRepository.save(loan);
 
         auditLogService.log(currentUser.getId().toString(), "CLOSE_LOAN_SPECIAL", "LOAN", loan.getId().toString());
-
-        return LoanClosureResponse.builder()
-                .id(savedClosure.getId())
-                .loanId(loan.getId())
-                .closureDate(savedClosure.getClosureDate())
-                .remarks(savedClosure.getRemarks())
-                .build();
+        return new LoanClosureResponse(true, "Loan closed successfully", null);
     }
 
     private User verifyAdminAccess() {
