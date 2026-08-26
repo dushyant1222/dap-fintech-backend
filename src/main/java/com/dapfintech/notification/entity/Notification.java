@@ -30,4 +30,12 @@ public class Notification {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    // Navigation type: LOAN, CUSTOMER, ENQUIRY, COLLECTION, EMPLOYEE, GENERAL
+    @Column(name = "navigation_type", length = 50)
+    private String navigationType;
+
+    // UUID of the related entity (loanId, customerId, enquiryId, etc.)
+    @Column(name = "reference_id")
+    private UUID referenceId;
 }

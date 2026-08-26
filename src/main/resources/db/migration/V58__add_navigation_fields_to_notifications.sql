@@ -1,0 +1,2 @@
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS navigation_type VARCHAR(50) DEFAULT 'GENERAL';
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id UUID;

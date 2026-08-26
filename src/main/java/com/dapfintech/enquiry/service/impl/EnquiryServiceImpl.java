@@ -71,7 +71,9 @@ public class EnquiryServiceImpl implements EnquiryService {
         // Notify all ADMIN users
         String title = "New Enquiry Received";
         String message = String.format("A new enquiry has been submitted by %s for market %s.", employee.getFullName(), market.getMarketName());
-        notificationService.notifyAllAdmins(title, message);
+        notificationService.notifyAllAdmins(title, message,
+            "ENQUIRY", null
+        );
 
         return enquiryMapper.toResponse(savedEnquiry);
     }

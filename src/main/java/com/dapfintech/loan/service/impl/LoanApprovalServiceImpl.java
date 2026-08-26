@@ -99,7 +99,8 @@ public class LoanApprovalServiceImpl
                 "Loan Submitted for Approval",
                 "Loan " +
                         loan.getId() +
-                        " has been submitted for approval."
+                        " has been submitted for approval.",
+                "LOAN", loan.getId()
         );
         if (loan != null && loan.getCreatedBy() != null) {
             notificationService.createNotificationForUser(
@@ -184,7 +185,8 @@ public class LoanApprovalServiceImpl
                 "Loan Approved",
                 "Loan " +
                 loan.getId() +
-                " has been approved."
+                " has been approved.",
+                "LOAN", loan.getId()
         );
         if (loan != null && loan.getCreatedBy() != null) {
             notificationService.createNotificationForUser(
@@ -241,7 +243,8 @@ public class LoanApprovalServiceImpl
                 "Loan Rejected",
                 "Loan " +
                 loan.getId() +
-                " has been rejected."
+                " has been rejected.",
+                "LOAN", loan.getId()
         );
         if (loan != null && loan.getCreatedBy() != null) {
             notificationService.createNotificationForUser(
@@ -311,7 +314,8 @@ public class LoanApprovalServiceImpl
                 "Loan Resubmitted for Approval",
                 "Loan " +
                         loan.getId() +
-                        " has been resubmitted for approval."
+                        " has been resubmitted for approval.",
+                "LOAN", loan.getId()
         );
         if (loan != null && loan.getCreatedBy() != null) {
             notificationService.createNotificationForUser(
