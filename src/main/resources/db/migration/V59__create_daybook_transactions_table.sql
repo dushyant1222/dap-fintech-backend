@@ -6,5 +6,5 @@ CREATE TABLE daybook_transactions (
     remarks TEXT,
     created_at TIMESTAMP NOT NULL,
     daybook_id UUID,
-    CONSTRAINT fk_daybook_transaction_daybook FOREIGN KEY (daybook_id) REFERENCES day_books(id)
+    CONSTRAINT fk_daybook_transaction_daybook FOREIGN KEY (daybook_id) REFERENCES day_book(id)
 );
