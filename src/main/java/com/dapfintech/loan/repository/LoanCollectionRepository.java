@@ -105,51 +105,28 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     Long getPendingCollectionCount();
     
     @Query(value = """
-    		SELECT
-
-    		l.id AS loanId,
-
-    		CAST(MIN(CAST(s.id AS varchar)) AS uuid) AS scheduleId,
-
-    		c.id AS customerId,
-
-    		CONCAT(
-    		c.first_name,
-    		' ',
-    		c.last_name
-    		) AS customerName,
-
-    		c.mobile_number AS mobileNumber,
-
-    		MIN(s.installment_number) AS installmentNumber,
-
-    		MIN(s.due_date) AS dueDate,
-
-    		SUM(s.installment_amount) AS installmentAmount,
-
-    		SUM(s.outstanding_amount) AS outstandingAmount
-
-    		FROM loan_repayment_schedules s
-
-    		JOIN loans l
-    		ON s.loan_id=l.id
-
-    		JOIN customers c
-    		ON l.customer_id=c.id
-
-    		WHERE s.repayment_status != 'PAID'
-
-    		AND s.due_date <= CURRENT_DATE
-
-    		AND l.id IN (
-    		    SELECT s2.loan_id 
-    		    FROM loan_repayment_schedules s2 
-    		    WHERE s2.due_date = CURRENT_DATE 
-    		    AND s2.repayment_status != 'PAID'
-    		)
-
-            GROUP BY l.id, c.id, c.first_name, c.last_name, c.mobile_number
-
+    		SELECT 
+    		    l.id AS loanId,
+    		    l.loan_code AS loanCode,
+    		    s.id AS scheduleId,
+    		    c.id AS customerId,
+    		    CONCAT(c.first_name, ' ', c.last_name) AS customerName,
+    		    c.mobile_number AS mobileNumber,
+    		    s.installment_number AS installmentNumber,
+    		    s.due_date AS dueDate,
+    		    s.installment_amount AS installmentAmount,
+    		    s.outstanding_amount AS outstandingAmount
+    		FROM loans l
+    		JOIN customers c ON l.customer_id = c.id
+    		JOIN loan_repayment_schedules s ON s.loan_id = l.id
+    		WHERE l.loan_status = 'ACTIVE'
+    		  AND s.repayment_status != 'PAID'
+    		  AND s.due_date = (
+    		      SELECT MIN(s2.due_date) 
+    		      FROM loan_repayment_schedules s2 
+    		      WHERE s2.loan_id = l.id 
+    		      AND s2.repayment_status != 'PAID'
+    		  )
     		ORDER BY c.first_name
     		""", nativeQuery = true)
     		List<TodayScheduleProjection> getTodaySchedule();
@@ -293,55 +270,30 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		);
     
     @Query(value = """
-    		SELECT
-
-    		l.id AS loanId,
-
-    		CAST(MIN(CAST(s.id AS varchar)) AS uuid) AS scheduleId,
-
-    		c.id AS customerId,
-
-    		CONCAT(
-    		c.first_name,
-    		' ',
-    		c.last_name
-    		) AS customerName,
-
-    		c.mobile_number AS mobileNumber,
-
-    		MIN(s.installment_number) AS installmentNumber,
-
-    		MIN(s.due_date) AS dueDate,
-
-    		SUM(s.installment_amount) AS installmentAmount,
-
-    		SUM(s.outstanding_amount) AS outstandingAmount
-
-    		FROM loan_repayment_schedules s
-
-    		JOIN loans l
-    		ON s.loan_id=l.id
-
-    		JOIN customers c
-    		ON l.customer_id=c.id
-
+    		SELECT 
+    		    l.id AS loanId,
+    		    l.loan_code AS loanCode,
+    		    s.id AS scheduleId,
+    		    c.id AS customerId,
+    		    CONCAT(c.first_name, ' ', c.last_name) AS customerName,
+    		    c.mobile_number AS mobileNumber,
+    		    s.installment_number AS installmentNumber,
+    		    s.due_date AS dueDate,
+    		    s.installment_amount AS installmentAmount,
+    		    s.outstanding_amount AS outstandingAmount
+    		FROM loans l
+    		JOIN customers c ON l.customer_id = c.id
+    		JOIN loan_repayment_schedules s ON s.loan_id = l.id
     		WHERE c.market_id = :marketId
-
-    		AND s.repayment_status != 'PAID'
-
-    		AND s.due_date <= CURRENT_DATE
-
-    		AND l.id IN (
-    		    SELECT s2.loan_id 
-    		    FROM loan_repayment_schedules s2 
-    		    WHERE s2.due_date = CURRENT_DATE 
-    		    AND s2.repayment_status != 'PAID'
-    		)
-
-            GROUP BY l.id, c.id, c.first_name, c.last_name, c.mobile_number
-
+    		  AND l.loan_status = 'ACTIVE'
+    		  AND s.repayment_status != 'PAID'
+    		  AND s.due_date = (
+    		      SELECT MIN(s2.due_date) 
+    		      FROM loan_repayment_schedules s2 
+    		      WHERE s2.loan_id = l.id 
+    		      AND s2.repayment_status != 'PAID'
+    		  )
     		ORDER BY c.first_name
-
     		""", nativeQuery = true)
     		List<TodayScheduleProjection>
     		getTodayScheduleByMarket(

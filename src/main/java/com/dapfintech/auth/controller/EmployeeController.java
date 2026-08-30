@@ -68,6 +68,11 @@ public class EmployeeController {
         return ResponseEntity.ok(employeeService.getAllEmployees());
     }
 
+    @GetMapping("/transfer-receivers")
+    public ResponseEntity<List<EmployeeResponse>> getTransferReceivers() {
+        return ResponseEntity.ok(employeeService.getTransferReceivers());
+    }
+
     @PutMapping("/{employeeId}/activate")
     public ResponseEntity<ApiResponse<Void>> activateEmployee(@PathVariable UUID employeeId ) {
 

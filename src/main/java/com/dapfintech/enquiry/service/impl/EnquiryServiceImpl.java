@@ -76,7 +76,7 @@ public class EnquiryServiceImpl implements EnquiryService {
             "ENQUIRY", null
         );
 
-        return enquiryMapper.toResponse(savedEnquiry);
+        return enrichEnquiryResponse(savedEnquiry);
     }
 
     @Override
@@ -84,19 +84,19 @@ public class EnquiryServiceImpl implements EnquiryService {
     public EnquiryResponse getEnquiryById(UUID id) {
         Enquiry enquiry = enquiryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Enquiry not found"));
-        return enquiryMapper.toResponse(enquiry);
+        return enrichEnquiryResponse(enquiry);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<EnquiryResponse> getAllEnquiries(Pageable pageable) {
-        return enquiryRepository.findAll(pageable).map(enquiryMapper::toResponse);
+        return enquiryRepository.findAll(pageable).map(this::enrichEnquiryResponse);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<EnquiryResponse> getEnquiriesByEmployee(UUID employeeId, Pageable pageable) {
-        return enquiryRepository.findByEmployeeId(employeeId, pageable).map(enquiryMapper::toResponse);
+        return enquiryRepository.findByEmployeeId(employeeId, pageable).map(this::enrichEnquiryResponse);
     }
 
     @Override
@@ -135,7 +135,35 @@ public class EnquiryServiceImpl implements EnquiryService {
             );
         }
         
-        return enquiryMapper.toResponse(savedEnquiry);
+        return enrichEnquiryResponse(savedEnquiry);
+    }
+
+    private EnquiryResponse enrichEnquiryResponse(Enquiry enquiry) {
+        EnquiryResponse response = enquiryMapper.toResponse(enquiry);
+        boolean isCustomer = enquiry.getStatus() == EnquiryStatus.CONVERTED;
+        if (!isCustomer && enquiry.getMobileNumber() != null && !enquiry.getMobileNumber().isBlank()) {
+            isCustomer = customerRepository.existsByMobileNumber(enquiry.getMobileNumber().trim());
+        }
+        if (!isCustomer && enquiry.getFullName() != null && !enquiry.getFullName().isBlank()) {
+            String fullName = enquiry.getFullName().trim();
+            String firstName;
+            String lastName = "";
+            int spaceIdx = fullName.indexOf(' ');
+            if (spaceIdx > 0) {
+                firstName = fullName.substring(0, spaceIdx);
+                lastName = fullName.substring(spaceIdx + 1).trim();
+            } else {
+                firstName = fullName;
+            }
+            if (!lastName.isEmpty()) {
+                isCustomer = customerRepository.existsByFirstNameIgnoreCaseAndLastNameIgnoreCase(firstName, lastName);
+            }
+        }
+        response.setIsAlreadyCustomer(isCustomer);
+        if (isCustomer && response.getStatus() != EnquiryStatus.CONVERTED) {
+            response.setStatus(EnquiryStatus.CONVERTED);
+        }
+        return response;
     }
 
     @Override

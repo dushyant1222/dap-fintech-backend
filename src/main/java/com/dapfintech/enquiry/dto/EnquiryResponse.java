@@ -41,5 +41,5 @@ public class EnquiryResponse {
     private String marketName;
     private List<EnquiryMediaDto> media;
     private LocalDateTime createdAt;
-   
+    private Boolean isAlreadyCustomer;
 }

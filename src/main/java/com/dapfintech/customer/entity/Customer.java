@@ -95,6 +95,8 @@ public class Customer extends BaseEntity {
 
     @Column(name = "deleted_by")
     private UUID deletedBy;
-	
+	public String getFullName() {
+		return (firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "");
+	}
 }
 

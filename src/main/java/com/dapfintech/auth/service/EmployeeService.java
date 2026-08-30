@@ -29,6 +29,8 @@ public interface EmployeeService {
 
     List<EmployeeResponse> getAllEmployees();
 
+    List<EmployeeResponse> getTransferReceivers();
+
     EmployeePageResponse filterEmployees(
             EmployeeFilterRequest request,
             int page,

@@ -18,6 +18,8 @@ import com.dapfintech.capital.repository.InternalTransferRepository;
 import com.dapfintech.capital.service.InternalTransferService;
 import com.dapfintech.employee.entity.DayBook;
 import com.dapfintech.employee.repository.DayBookRepository;
+import com.dapfintech.employee.repository.DayBookTransactionRepository;
+import com.dapfintech.employee.entity.DayBookTransaction;
 import com.dapfintech.security.utils.SecurityUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     private final UserRepository userRepository;
     private final SecurityUtils securityUtils;
     private final DayBookRepository dayBookRepository;
+    private final DayBookTransactionRepository dayBookTransactionRepository;
 
     @Override
     @Transactional
@@ -82,15 +85,30 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         if (transfer.getReceiver().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             java.time.LocalDate today = java.time.LocalDate.now();
             dayBookRepository.findByEmployeeIdAndDate(currentUserId, today).ifPresent(dayBook -> {
+                String txType;
                 if (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH) {
                     if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(java.math.BigDecimal.ZERO);
                     dayBook.setCashIncomingTransfers(dayBook.getCashIncomingTransfers().add(transfer.getAmount()));
+                    txType = "CASH_INCOMING_TRANSFER";
                 } else {
                     if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(java.math.BigDecimal.ZERO);
                     dayBook.setIncomingTransfers(dayBook.getIncomingTransfers().add(transfer.getAmount()));
+                    txType = "INCOMING_TRANSFER";
                 }
                 updateDaybookClosingBalance(dayBook);
                 dayBookRepository.save(dayBook);
+
+                DayBookTransaction rxTx = new DayBookTransaction();
+                rxTx.setDayBook(dayBook);
+                rxTx.setEmployeeId(currentUserId);
+                rxTx.setType(txType);
+                rxTx.setAmount(transfer.getAmount());
+                String remarks = (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "Cash from: " : "Online from: ")
+                        + transfer.getSender().getFullName()
+                        + (transfer.getRemarks() != null && !transfer.getRemarks().isBlank() ? " (" + transfer.getRemarks() + ")" : "");
+                rxTx.setRemarks(remarks);
+                rxTx.setCreatedAt(java.time.LocalDateTime.now());
+                dayBookTransactionRepository.save(rxTx);
             });
         }
         
@@ -98,15 +116,30 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         if (transfer.getSender().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             java.time.LocalDate today = java.time.LocalDate.now();
             dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), today).ifPresent(dayBook -> {
+                String txType;
                 if (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH) {
                     if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(java.math.BigDecimal.ZERO);
                     dayBook.setCashOutgoingTransfers(dayBook.getCashOutgoingTransfers().add(transfer.getAmount()));
+                    txType = "CASH_OUTGOING_TRANSFER";
                 } else {
                     if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(java.math.BigDecimal.ZERO);
                     dayBook.setOutgoingTransfers(dayBook.getOutgoingTransfers().add(transfer.getAmount()));
+                    txType = "OUTGOING_TRANSFER";
                 }
                 updateDaybookClosingBalance(dayBook);
                 dayBookRepository.save(dayBook);
+
+                DayBookTransaction txTx = new DayBookTransaction();
+                txTx.setDayBook(dayBook);
+                txTx.setEmployeeId(transfer.getSender().getId());
+                txTx.setType(txType);
+                txTx.setAmount(transfer.getAmount());
+                String remarks = (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "Cash to: " : "Online to: ")
+                        + transfer.getReceiver().getFullName()
+                        + (transfer.getRemarks() != null && !transfer.getRemarks().isBlank() ? " (" + transfer.getRemarks() + ")" : "");
+                txTx.setRemarks(remarks);
+                txTx.setCreatedAt(java.time.LocalDateTime.now());
+                dayBookTransactionRepository.save(txTx);
             });
         }
         
@@ -196,6 +229,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 .status(t.getStatus())
                 .transferDate(t.getTransferDate())
                 .category(t.getCategory())
+                .transferMode(t.getTransferMode() != null ? t.getTransferMode().name() : null)
                 .remarks(t.getRemarks())
                 .build();
     }

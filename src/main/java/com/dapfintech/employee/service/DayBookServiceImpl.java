@@ -100,6 +100,9 @@ public class DayBookServiceImpl implements DayBookService {
 
         switch (request.getType().toUpperCase()) {
             case "SPENDS":
+                if (request.getRemarks() == null || request.getRemarks().trim().isEmpty()) {
+                    throw new RuntimeException("Remarks are mandatory for spends.");
+                }
                 dayBook.setSpends(dayBook.getSpends().add(amount));
                 break;
             case "COLLECTIONS":
@@ -130,8 +133,16 @@ public class DayBookServiceImpl implements DayBookService {
             case "INCOMING_TRANSFER":
                 dayBook.setIncomingTransfers(dayBook.getIncomingTransfers().add(amount));
                 break;
+            case "CASH_INCOMING_TRANSFER":
+                if (dayBook.getCashIncomingTransfers() == null) dayBook.setCashIncomingTransfers(BigDecimal.ZERO);
+                dayBook.setCashIncomingTransfers(dayBook.getCashIncomingTransfers().add(amount));
+                break;
             case "OUTGOING_TRANSFER":
                 dayBook.setOutgoingTransfers(dayBook.getOutgoingTransfers().add(amount));
+                break;
+            case "CASH_OUTGOING_TRANSFER":
+                if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(BigDecimal.ZERO);
+                dayBook.setCashOutgoingTransfers(dayBook.getCashOutgoingTransfers().add(amount));
                 break;
             default:
                 throw new RuntimeException("Unknown transaction type: " + request.getType());
@@ -139,6 +150,17 @@ public class DayBookServiceImpl implements DayBookService {
         
         dayBook.setClosingBalance(calculateClosingBalance(dayBook));
         dayBook = dayBookRepository.save(dayBook);
+
+        // Save transaction history for dropdown details
+        com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
+        tx.setDayBook(dayBook);
+        tx.setEmployeeId(employeeId);
+        tx.setType(request.getType().toUpperCase());
+        tx.setAmount(amount);
+        tx.setRemarks(request.getRemarks());
+        tx.setCreatedAt(java.time.LocalDateTime.now());
+        dayBookTransactionRepository.save(tx);
+
         return mapToResponse(dayBook);
     }
     

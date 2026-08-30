@@ -18,6 +18,11 @@ public interface CustomerRepository
     boolean existsByMobileNumber(
             String mobileNumber
     );
+
+    boolean existsByFirstNameIgnoreCaseAndLastNameIgnoreCase(
+            String firstName,
+            String lastName
+    );
     Long countByMarketId(UUID marketId);
 
     Long countBy();

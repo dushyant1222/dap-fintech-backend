@@ -461,6 +461,18 @@ public class EmployeeServiceImpl implements EmployeeService {
 	            )
 	            .toList();
 	}
+
+	@Override
+	public List<EmployeeResponse> getTransferReceivers() {
+	    List<User> employees = userRepository.findByRoleRoleName("EMPLOYEE");
+	    List<User> admins = userRepository.findByRoleRoleName("ADMIN");
+	    List<User> all = new java.util.ArrayList<>();
+	    all.addAll(employees);
+	    all.addAll(admins);
+	    return all.stream()
+	            .map(employeeMapper::toResponse)
+	            .toList();
+	}
 	@Override
 	public void activateEmployee(
 	        UUID employeeId

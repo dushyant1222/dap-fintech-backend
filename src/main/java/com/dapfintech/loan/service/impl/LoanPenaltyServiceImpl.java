@@ -212,7 +212,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                     com.dapfintech.employee.dto.DayBookTransactionRequest txReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
                     txReq.setType("COLLECTIONS");
                     txReq.setAmount(request.getSettlementAmountPaid());
-                    txReq.setRemarks("SPECIAL CLOSURE SETTLEMENT");
+                    txReq.setRemarks("Special Closure: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
                     dayBookService.addTransaction(loan.getCreatedBy().getId(), txReq);
                 } catch (Exception e) {
                     throw new RuntimeException("Could not add transaction to employee daybook: " + e.getMessage());

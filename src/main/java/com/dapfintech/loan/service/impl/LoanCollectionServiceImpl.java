@@ -1091,7 +1091,7 @@ public class LoanCollectionServiceImpl
                 com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
                 dbReq.setType("COLLECTIONS");
                 dbReq.setAmount(collection.getCollectedAmount());
-                dbReq.setRemarks("EMI Collected: " + loan.getLoanCode());
+                dbReq.setRemarks("EMI Collected: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
                 dayBookService.addTransaction(loggedInEmployee.getId(), dbReq);
             } catch(Exception e) {
                 // If it fails (e.g. daybook closed), we don't block the collection, just log it.
