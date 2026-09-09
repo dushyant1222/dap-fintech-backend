@@ -25,4 +25,6 @@ public class LoginResponse {
 	    private String fullName;
 
 	    private String role;
+	    private Boolean isMasterAdmin;
+	    private String mobileNumber;
 }

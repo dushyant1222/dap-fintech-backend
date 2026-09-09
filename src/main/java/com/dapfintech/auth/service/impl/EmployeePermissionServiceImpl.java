@@ -67,36 +67,28 @@ public class EmployeePermissionServiceImpl
                                 employeeId
                         );
 
-        Map<UUID, Boolean> allowedMap =
-                new HashMap<>();
+        Map<UUID, Boolean> allowedMap = new HashMap<>();
+        boolean isFirstTime = assignedPermissions.isEmpty();
 
-        for (EmployeePermission assigned
-                : assignedPermissions) {
-
+        for (EmployeePermission assigned : assignedPermissions) {
             allowedMap.put(
                     assigned.getPermission().getId(),
-                    Boolean.TRUE.equals(
-                            assigned.getAllowed()
-                    )
+                    Boolean.TRUE.equals(assigned.getAllowed())
             );
         }
 
-        List<EmployeePermissionItemResponse>
-                permissionResponses =
-                allPermissions
-                        .stream()
-                        .map(permission ->
-
-                                employeePermissionMapper
-                                        .toResponse(
-                                                permission,
-                                                allowedMap
-                                                        .getOrDefault(
-                                                                permission.getId(),
-                                                                false
-                                                        )
-                                        )
-                        )
+        List<EmployeePermissionItemResponse> permissionResponses =
+                allPermissions.stream()
+                        .map(permission -> {
+                            boolean isAllowed;
+                            if (isFirstTime) {
+                                String key = permission.getPermissionKey().toUpperCase();
+                                isAllowed = !key.contains("DELETE") && !key.equals("GPS_REQUIRED") && !key.equals("CAMERA_REQUIRED");
+                            } else {
+                                isAllowed = allowedMap.getOrDefault(permission.getId(), false);
+                            }
+                            return employeePermissionMapper.toResponse(permission, isAllowed);
+                        })
                         .toList();
 
         return EmployeePermissionsResponse
@@ -210,6 +202,12 @@ public class EmployeePermissionServiceImpl
                 permissionKey.isBlank()) {
 
             return false;
+        }
+
+        List<EmployeePermission> assigned = employeePermissionRepository.findByEmployeeId(employeeId);
+        if (assigned.isEmpty()) {
+            String key = permissionKey.toUpperCase();
+            return !key.contains("DELETE") && !key.equals("GPS_REQUIRED") && !key.equals("CAMERA_REQUIRED");
         }
 
         return employeePermissionRepository

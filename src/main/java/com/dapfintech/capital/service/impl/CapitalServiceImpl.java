@@ -37,6 +37,7 @@ import com.dapfintech.loan.entity.LoanCollection;
 import com.dapfintech.loan.enums.LoanStatus;
 import com.dapfintech.loan.repository.LoanCollectionRepository;
 import com.dapfintech.loan.repository.LoanRepository;
+import com.dapfintech.loan.repository.LoanRepaymentScheduleRepository;
 import com.dapfintech.capital.repository.InternalTransferRepository;
 import com.dapfintech.capital.entity.InternalTransfer;
 import com.dapfintech.capital.enums.TransferStatus;
@@ -54,6 +55,7 @@ public class CapitalServiceImpl implements CapitalService {
     private final LoanCollectionRepository loanCollectionRepository;
     private final UserRepository userRepository;
     private final InternalTransferRepository internalTransferRepository;
+    private final LoanRepaymentScheduleRepository loanRepaymentScheduleRepository;
 
     private User getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -167,39 +169,38 @@ public class CapitalServiceImpl implements CapitalService {
     public CapitalSummaryResponse getCapitalSummary() {
         BigDecimal totalCapital = orZero(capitalInRepository.getTotalCapitalInjected());
         BigDecimal totalExpenses = orZero(expenseRepository.getTotalExpenses());
-        BigDecimal totalSettled = orZero(cashSettlementRepository.getTotalSettledAmount());
+        BigDecimal totalSettled = orZero(cashSettlementRepository.getTotalSettledAmount())
+                .add(orZero(internalTransferRepository.getAdminIncomingTransfers()));
 
         // SQL aggregates — no findAll() loops
         BigDecimal totalDisbursed = orZero(loanRepository.getTotalDisbursedPrincipal());
-        BigDecimal marketBalance  = orZero(loanRepository.getMarketBalance());
+        BigDecimal activeDisbursed = orZero(loanRepository.getActiveLoansDisbursedPrincipal());
+        BigDecimal activePrincipalCollected = orZero(loanRepaymentScheduleRepository.getActiveLoansPrincipalCollected());
         BigDecimal totalCollections = orZero(loanCollectionRepository.getTotalCollections());
 
-        BigDecimal adminIncomingTransfers = orZero(internalTransferRepository.getAdminIncomingTransfers());
         BigDecimal adminOutgoingTransfers = orZero(internalTransferRepository.getAdminOutgoingTransfers());
+
+        BigDecimal balanceInMarket = activeDisbursed.subtract(activePrincipalCollected);
+        if (balanceInMarket.compareTo(BigDecimal.ZERO) < 0) {
+            balanceInMarket = BigDecimal.ZERO;
+        }
 
         BigDecimal balanceOnEmployees = totalCollections.subtract(totalSettled);
         if (balanceOnEmployees.compareTo(BigDecimal.ZERO) < 0) {
             balanceOnEmployees = BigDecimal.ZERO;
         }
 
-        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled).add(adminIncomingTransfers)
-                .subtract(totalDisbursed.add(totalExpenses).add(adminOutgoingTransfers));
+        BigDecimal vaultAvailableCash = totalCapital.add(totalSettled)
+                .subtract(totalDisbursed)
+                .subtract(totalExpenses)
+                .subtract(adminOutgoingTransfers);
 
-        BigDecimal dynamicMarketBalance = marketBalance.subtract(totalCollections);
-        if (dynamicMarketBalance.compareTo(BigDecimal.ZERO) < 0) {
-            dynamicMarketBalance = BigDecimal.ZERO;
-        }
-
-        BigDecimal expectedTotalReturn = marketBalance.multiply(BigDecimal.valueOf(1.10))
-                .setScale(2, RoundingMode.HALF_UP).subtract(totalCollections);
-        if (expectedTotalReturn.compareTo(BigDecimal.ZERO) < 0) {
-            expectedTotalReturn = BigDecimal.ZERO;
-        }
+        BigDecimal expectedTotalReturn = orZero(loanRepaymentScheduleRepository.getTotalOutstandingReceivable());
 
         return CapitalSummaryResponse.builder()
                 .totalCapitalInjected(totalCapital)
                 .totalDisbursedPrincipal(totalDisbursed)
-                .balanceInMarket(dynamicMarketBalance)
+                .balanceInMarket(balanceInMarket)
                 .totalCollections(totalCollections)
                 .totalSettledCash(totalSettled)
                 .balanceOnEmployees(balanceOnEmployees)

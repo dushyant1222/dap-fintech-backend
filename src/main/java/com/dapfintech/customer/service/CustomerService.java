@@ -54,4 +54,10 @@ public interface CustomerService {
     CustomerDetailsResponse getCustomerDetails(
             UUID customerId
     );
+
+    Page<CustomerResponse> getEligibleCustomersForLoan(
+            String keyword,
+            int page,
+            int size
+    );
 }

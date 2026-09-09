@@ -24,64 +24,58 @@ public class AdminSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-
-        createAdminRole();
-
-        createDefaultAdmin();
+        createRoles();
+        createDefaultMasterAdmin();
     }
 
-    private void createAdminRole() {
-
-        if (roleRepository
-                .findByRoleName("ADMIN")
-                .isPresent()) {
-
-            return;
+    private void createRoles() {
+        if (roleRepository.findByRoleName("MASTER_ADMIN").isEmpty()) {
+            Role masterRole = Role.builder()
+                    .roleName("MASTER_ADMIN")
+                    .roleDescription("Master Administrator")
+                    .build();
+            roleRepository.save(masterRole);
+            System.out.println("MASTER_ADMIN role created");
         }
 
-        Role role = Role.builder()
-                .roleName("ADMIN")
-                .roleDescription("System Administrator")
-                .build();
-
-        roleRepository.save(role);
-
-        System.out.println(
-                "ADMIN role created"
-        );
+        if (roleRepository.findByRoleName("ADMIN").isEmpty()) {
+            Role adminRole = Role.builder()
+                    .roleName("ADMIN")
+                    .roleDescription("System Administrator")
+                    .build();
+            roleRepository.save(adminRole);
+            System.out.println("ADMIN role created");
+        }
     }
 
-    private void createDefaultAdmin() {
+    private void createDefaultMasterAdmin() {
+        Role masterAdminRole = roleRepository.findByRoleName("MASTER_ADMIN")
+                .orElseGet(() -> roleRepository.findByRoleName("ADMIN").orElseThrow());
 
-        if (userRepository
-                .existsByMobileNumber(
-                        "9999999999"
-                )) {
-
+        var existingUserOpt = userRepository.findByMobileNumber("9999999999");
+        if (existingUserOpt.isPresent()) {
+            User existing = existingUserOpt.get();
+            existing.setFullName("Master Admin");
+            existing.setRole(masterAdminRole);
+            existing.setStatus(UserStatus.ACTIVE);
+            userRepository.save(existing);
+            System.out.println("Default Master Admin updated to MASTER_ADMIN role");
             return;
         }
-
-        Role adminRole =
-                roleRepository
-                        .findByRoleName("ADMIN")
-                        .orElseThrow();
 
         User admin = User.builder()
-                .fullName("System Admin")
+                .fullName("Master Admin")
                 .mobileNumber("9999999999")
                 .passwordHash(
                         passwordEncoder.encode(
                                 "Admin@123"
                         )
                 )
-                .role(adminRole)
+                .role(masterAdminRole)
                 .status(UserStatus.ACTIVE)
                 .build();
 
         userRepository.save(admin);
-
-        System.out.println(
-                "Default admin created"
-        );
+        System.out.println("Default Master Admin created");
     }
 }

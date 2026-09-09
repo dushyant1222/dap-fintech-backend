@@ -108,6 +108,21 @@ public class CustomerController {
         );
     }
 
+    @GetMapping("/eligible-for-loan")
+    public ResponseEntity<ApiResponse<Page<CustomerResponse>>> getEligibleCustomersForLoan(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.<Page<CustomerResponse>>builder()
+                        .success(true)
+                        .message("Eligible customers retrieved successfully")
+                        .data(customerService.getEligibleCustomersForLoan(keyword, page, size))
+                        .build()
+        );
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<CustomerResponse>> createCustomer(
             @Valid @RequestBody CreateCustomerRequest request

@@ -8,16 +8,24 @@ import java.util.List;
 @Data
 public class LedgerPreviewDto {
     private String loanCode;
+    private String loanNumber;
     private String customerName;
     private String marketName;
+    private BigDecimal totalLoanAmount;
+    private String interestRate;
+    private BigDecimal disbursedAmount;
+    private String loanType;
+    private String tenure;
+    private BigDecimal amountCollectedToday;
+    private String status;
+
     private LocalDate startDate;
     private LocalDate endDate;
-    private BigDecimal disbursedAmount;
     private BigDecimal totalInterest;
-    private String loanType;
-    private String status;
     private BigDecimal outstandingBalance;
     private BigDecimal closingBalance;
 
     private List<LedgerPreviewScheduleDto> schedules;
+    private List<LedgerEntryDto> ledgerEntries;
 }
+

@@ -120,13 +120,18 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
+        boolean isMaster = "9999999999".equals(user.getMobileNumber()) || 
+                          (user.getRole() != null && "MASTER_ADMIN".equalsIgnoreCase(user.getRole().getRoleName()));
+
         return LoginResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .fullName(user.getFullName())
-                .role(user.getRole().getRoleName())
+                .mobileNumber(user.getMobileNumber())
+                .role(user.getRole() != null ? user.getRole().getRoleName() : "ADMIN")
                 .userId(user.getId())
+                .isMasterAdmin(isMaster)
                 .build();
     }
     

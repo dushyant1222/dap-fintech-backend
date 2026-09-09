@@ -29,6 +29,12 @@ public class AdminDayBookController {
         return ResponseEntity.ok(response);
     }
     
+    @PutMapping("/{dayBookId}/reopen")
+    public ResponseEntity<DayBookResponse> reopenDayBook(@PathVariable UUID dayBookId) {
+        DayBookResponse response = dayBookService.reopenDayBook(dayBookId);
+        return ResponseEntity.ok(response);
+    }
+    
     @PutMapping("/{dayBookId}")
     public ResponseEntity<DayBookResponse> updateDayBook(
             @PathVariable UUID dayBookId,
@@ -37,3 +43,4 @@ public class AdminDayBookController {
         return ResponseEntity.ok(response);
     }
 }
+

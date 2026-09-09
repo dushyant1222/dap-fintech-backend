@@ -147,6 +147,18 @@ public interface LoanRepository
     BigDecimal getMarketBalance();
 
     @Query(value = """
+            SELECT COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            FROM loans l
+            WHERE l.loan_status = 'ACTIVE'
+            """, nativeQuery = true)
+    BigDecimal getActiveLoansDisbursedPrincipal();
+
+    @Query(value = """
             SELECT l.loan_type, l.repayment_frequency, COUNT(*)
             FROM loans l
             WHERE l.loan_status IN ('ACTIVE','APPROVED')

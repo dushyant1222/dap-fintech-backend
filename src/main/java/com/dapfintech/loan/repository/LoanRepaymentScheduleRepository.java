@@ -292,5 +292,23 @@ public interface LoanRepaymentScheduleRepository
             LIMIT 1
             """, nativeQuery = true)
     BigDecimal getFirstInstallmentAmountByLoan(@Param("loanId") UUID loanId);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.principal_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_status = 'ACTIVE'
+            AND s.repayment_status = 'PAID'
+            """, nativeQuery = true)
+    BigDecimal getActiveLoansPrincipalCollected();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.outstanding_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_status = 'ACTIVE'
+            AND s.repayment_status != 'PAID'
+            """, nativeQuery = true)
+    BigDecimal getTotalOutstandingReceivable();
 }
 

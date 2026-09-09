@@ -24,11 +24,44 @@ public class DataMigrationRunner implements CommandLineRunner {
     private final UserRepository userRepository;
     private final CustomerRepository customerRepository;
     private final LoanRepository loanRepository;
+    private final com.dapfintech.auth.repository.PermissionRepository permissionRepository;
 
     @Override
     @Transactional
     public void run(String... args) throws Exception {
-        log.info("Starting Data Migration for Sequential IDs...");
+        log.info("Starting Data Migration and Permission Seeding...");
+
+        // Seed Standard Permissions if missing
+        String[][] standardPermissions = {
+            {"DASHBOARD", "Dashboard", "Access Employee Dashboard overview and metrics"},
+            {"CUSTOMERS", "Customers", "View assigned customer list and customer profiles"},
+            {"CREATE_CUSTOMER", "Customers", "Register new customers in assigned markets"},
+            {"EDIT_CUSTOMER", "Customers", "Edit customer details and KYC documents"},
+            {"LOANS", "Loans", "View loan lists and detailed loan schedules"},
+            {"CREATE_LOAN", "Loans", "Create new loan applications for customers"},
+            {"APPROVE_LOAN", "Loans", "Disburse and approve eligible loans"},
+            {"COLLECTIONS", "Collections", "View daily collection schedule and customer dues"},
+            {"OFFLINE_COLLECTION", "Collections", "Collect EMI payments and issue instant receipts"},
+            {"EXPENSES", "Accounting & Daybook", "Record daily field spends and expenses"},
+            {"WALLET", "Accounting & Daybook", "Receive and send internal fund transfers"},
+            {"CLOSE_LEDGER", "Accounting & Daybook", "Submit daybook ledger closure request to Admin"},
+            {"ENQUIRIES", "Enquiry Management", "View and process customer market enquiries"},
+            {"REPORTS", "Reports", "Access and view market summary and daily ledger reports"},
+            {"GPS_REQUIRED", "Security & Tracking", "Enforce live GPS location verification during collections"},
+            {"CAMERA_REQUIRED", "Security & Tracking", "Enforce camera capture during collection and KYC"}
+        };
+
+        for (String[] p : standardPermissions) {
+            if (permissionRepository.findByPermissionKey(p[0]).isEmpty()) {
+                com.dapfintech.auth.entity.Permission perm = com.dapfintech.auth.entity.Permission.builder()
+                        .permissionKey(p[0])
+                        .moduleName(p[1])
+                        .description(p[2])
+                        .build();
+                permissionRepository.save(perm);
+                log.info("Seeded permission: {} ({})", p[0], p[1]);
+            }
+        }
 
         // Migrate Employees
         List<User> employees = userRepository.findByRoleRoleName("EMPLOYEE");

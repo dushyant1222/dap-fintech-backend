@@ -916,6 +916,67 @@ public class CustomerServiceImpl
                 );
     }
 
+    @Override
+    public Page<CustomerResponse> getEligibleCustomersForLoan(
+            String keyword,
+            int page,
+            int size
+    ) {
+        Authentication authentication =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        String mobileNumber =
+                authentication.getName();
+
+        User user =
+                userRepository
+                        .findByMobileNumber(
+                                mobileNumber
+                        )
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "User not found"
+                                )
+                        );
+
+        String trimmedKeyword = (keyword != null && !keyword.trim().isEmpty()) ? keyword.trim() : null;
+        PageRequest pageRequest = PageRequest.of(page, size);
+
+        if (user.getRole().getRoleName().equalsIgnoreCase("ADMIN") ||
+            user.getRole().getRoleName().equalsIgnoreCase("SUPER_ADMIN")) {
+            return customerRepository
+                    .findCustomersWithoutActiveLoans(
+                            trimmedKeyword,
+                            BLOCKING_LOAN_STATUSES,
+                            pageRequest
+                    )
+                    .map(customerMapper::toResponse);
+        }
+
+        // EMPLOYEE - only show eligible customers in employee's assigned market
+        EmployeeMarketAssignment assignment =
+                assignmentRepository
+                        .findFirstByEmployeeIdAndIsActiveTrue(
+                                user.getId()
+                        )
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "No market assigned"
+                                )
+                        );
+
+        return customerRepository
+                .findMarketCustomersWithoutActiveLoans(
+                        assignment.getMarket().getId(),
+                        trimmedKeyword,
+                        BLOCKING_LOAN_STATUSES,
+                        pageRequest
+                )
+                .map(customerMapper::toResponse);
+    }
+
     private String generateCustomerCode(Market market) {
         String marketPrefix = "NA";
         long count = 0;

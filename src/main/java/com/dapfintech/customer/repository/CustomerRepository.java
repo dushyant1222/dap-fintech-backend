@@ -11,6 +11,10 @@ import org.springframework.data.jpa.repository.Query;
 
 import com.dapfintech.customer.entity.Customer;
 
+import org.springframework.data.repository.query.Param;
+import java.util.Collection;
+import com.dapfintech.loan.enums.LoanStatus;
+
 public interface CustomerRepository
         extends JpaRepository<Customer, UUID>,
         JpaSpecificationExecutor<Customer> {
@@ -62,8 +66,6 @@ public interface CustomerRepository
             Pageable pageable
     );
 
-
-
     @Query("""
             SELECT COUNT(c)
             FROM Customer c
@@ -75,6 +77,52 @@ public interface CustomerRepository
             )
             """)
     Long countAssignedCustomers(
-            UUID employeeId
+            @Param("employeeId") UUID employeeId
+    );
+
+    @Query("""
+            SELECT c FROM Customer c
+            WHERE c.deleted = false
+            AND c.id NOT IN (
+                SELECT l.customer.id FROM Loan l
+                WHERE l.loanStatus IN :blockingStatuses
+            )
+            AND (
+                :keyword IS NULL OR :keyword = '' OR
+                LOWER(c.firstName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(c.lastName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(c.customerCode) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                c.mobileNumber LIKE CONCAT('%', :keyword, '%')
+            )
+            ORDER BY c.createdAt DESC
+            """)
+    Page<Customer> findCustomersWithoutActiveLoans(
+            @Param("keyword") String keyword,
+            @Param("blockingStatuses") Collection<LoanStatus> blockingStatuses,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT c FROM Customer c
+            WHERE c.deleted = false
+            AND c.market.id = :marketId
+            AND c.id NOT IN (
+                SELECT l.customer.id FROM Loan l
+                WHERE l.loanStatus IN :blockingStatuses
+            )
+            AND (
+                :keyword IS NULL OR :keyword = '' OR
+                LOWER(c.firstName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(c.lastName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                LOWER(c.customerCode) LIKE LOWER(CONCAT('%', :keyword, '%')) OR
+                c.mobileNumber LIKE CONCAT('%', :keyword, '%')
+            )
+            ORDER BY c.createdAt DESC
+            """)
+    Page<Customer> findMarketCustomersWithoutActiveLoans(
+            @Param("marketId") UUID marketId,
+            @Param("keyword") String keyword,
+            @Param("blockingStatuses") Collection<LoanStatus> blockingStatuses,
+            Pageable pageable
     );
 }

@@ -293,6 +293,30 @@ public class DayBookServiceImpl implements DayBookService {
         dayBook = dayBookRepository.save(dayBook);
         return mapToResponse(dayBook);
     }
+
+    @Override
+    @Transactional
+    public DayBookResponse reopenDayBook(UUID dayBookId) {
+        DayBook dayBook = dayBookRepository.findById(dayBookId)
+                .orElseThrow(() -> new RuntimeException("DayBook not found"));
+        
+        dayBook.setStatus(DayBookStatus.OPEN);
+        dayBook = dayBookRepository.save(dayBook);
+        
+        // Also if MarketDayBook exists for that market and date, reopen it
+        UUID employeeId = dayBook.getEmployeeId();
+        LocalDate date = dayBook.getDate();
+        com.dapfintech.market.entity.EmployeeMarketAssignment assignment = 
+            assignmentRepository.findByEmployeeIdAndIsActiveTrue(employeeId).stream().findFirst().orElse(null);
+        if (assignment != null) {
+            marketDayBookRepository.findByMarketIdAndDate(assignment.getMarket().getId(), date).ifPresent(mdb -> {
+                mdb.setStatus(DayBookStatus.OPEN);
+                marketDayBookRepository.save(mdb);
+            });
+        }
+        
+        return mapToResponse(dayBook);
+    }
     
     @Override
     @Transactional
@@ -300,12 +324,15 @@ public class DayBookServiceImpl implements DayBookService {
         DayBook dayBook = dayBookRepository.findById(dayBookId)
                 .orElseThrow(() -> new RuntimeException("DayBook not found"));
                 
+        if (request.getOpeningBalance() != null) dayBook.setOpeningBalance(request.getOpeningBalance());
         if (request.getCollections() != null) dayBook.setCollections(request.getCollections());
         if (request.getSpends() != null) dayBook.setSpends(request.getSpends());
         if (request.getLoansDisbursed() != null) dayBook.setLoansDisbursed(request.getLoansDisbursed());
         if (request.getOfficeRemittance() != null) dayBook.setOfficeRemittance(request.getOfficeRemittance());
         if (request.getIncomingTransfers() != null) dayBook.setIncomingTransfers(request.getIncomingTransfers());
+        if (request.getCashIncomingTransfers() != null) dayBook.setCashIncomingTransfers(request.getCashIncomingTransfers());
         if (request.getOutgoingTransfers() != null) dayBook.setOutgoingTransfers(request.getOutgoingTransfers());
+        if (request.getCashOutgoingTransfers() != null) dayBook.setCashOutgoingTransfers(request.getCashOutgoingTransfers());
         
         dayBook.setClosingBalance(calculateClosingBalance(dayBook));
         dayBook = dayBookRepository.save(dayBook);
