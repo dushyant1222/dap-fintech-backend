@@ -23,6 +23,11 @@ public interface CustomerRepository
             String mobileNumber
     );
 
+    Optional<Customer>
+    findByMobileNumber(
+            String mobileNumber
+    );
+
     boolean existsByFirstNameIgnoreCaseAndLastNameIgnoreCase(
             String firstName,
             String lastName

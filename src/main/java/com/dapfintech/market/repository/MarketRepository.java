@@ -36,5 +36,10 @@ public interface MarketRepository
             UUID marketId,
             MarketStatus status
     );
+
+    Optional<Market>
+    findByMarketNameIgnoreCase(
+            String marketName
+    );
     
 }
