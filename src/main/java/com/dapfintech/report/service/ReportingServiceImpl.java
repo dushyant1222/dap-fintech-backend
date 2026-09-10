@@ -143,7 +143,39 @@ public class ReportingServiceImpl implements ReportingService {
             yellowFont.setColor(IndexedColors.BLACK.getIndex());
             yellowStyle.setFont(yellowFont);
 
-            // Center style for cross / normal days
+            // Green & Red styles for Loan Number & Status
+            CellStyle greenLoanStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font greenLoanFont = workbook.createFont();
+            greenLoanFont.setBold(true);
+            greenLoanFont.setColor(IndexedColors.GREEN.getIndex());
+            greenLoanStyle.setFont(greenLoanFont);
+            greenLoanStyle.setAlignment(HorizontalAlignment.CENTER);
+            greenLoanStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle redLoanStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font redLoanFont = workbook.createFont();
+            redLoanFont.setBold(true);
+            redLoanFont.setColor(IndexedColors.RED.getIndex());
+            redLoanStyle.setFont(redLoanFont);
+            redLoanStyle.setAlignment(HorizontalAlignment.CENTER);
+            redLoanStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle greenStatusStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font greenStatusFont = workbook.createFont();
+            greenStatusFont.setBold(true);
+            greenStatusFont.setColor(IndexedColors.GREEN.getIndex());
+            greenStatusStyle.setFont(greenStatusFont);
+            greenStatusStyle.setAlignment(HorizontalAlignment.CENTER);
+            greenStatusStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle redStatusStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font redStatusFont = workbook.createFont();
+            redStatusFont.setBold(true);
+            redStatusFont.setColor(IndexedColors.RED.getIndex());
+            redStatusStyle.setFont(redStatusFont);
+            redStatusStyle.setAlignment(HorizontalAlignment.CENTER);
+            redStatusStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
             CellStyle centerStyle = workbook.createCellStyle();
             centerStyle.setAlignment(HorizontalAlignment.CENTER);
             centerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
@@ -211,6 +243,7 @@ public class ReportingServiceImpl implements ReportingService {
                         .sum();
 
                 double receivedAmount = 0.0;
+                java.time.LocalDate lastCollectionDate = null;
                 java.util.Map<java.time.LocalDate, Double> dailyMap = new java.util.HashMap<>();
                 for (com.dapfintech.loan.entity.LoanCollection lc : allCollections) {
                     if (lc.getLoan() != null && lc.getLoan().getId().equals(loan.getId()) && lc.getCollectedAmount() != null) {
@@ -218,11 +251,22 @@ public class ReportingServiceImpl implements ReportingService {
                         if (lc.getCollectionDate() != null) {
                             java.time.LocalDate cd = lc.getCollectionDate().toLocalDate();
                             dailyMap.put(cd, dailyMap.getOrDefault(cd, 0.0) + lc.getCollectedAmount().doubleValue());
+                            if (lastCollectionDate == null || cd.isAfter(lastCollectionDate)) {
+                                lastCollectionDate = cd;
+                            }
                         }
                     }
                 }
 
-                double gapTillToday = Math.max(0.0, balanceRequiredTillToday - receivedAmount);
+                double remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
+                String status = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
+                boolean isLoanClosed = "CLOSED".equalsIgnoreCase(status) || (remainingBalance <= 0.001);
+
+                if (isLoanClosed && lastCollectionDate == null && loan.getUpdatedAt() != null) {
+                    lastCollectionDate = loan.getUpdatedAt().toLocalDate();
+                }
+
+                double gapTillToday = isLoanClosed ? 0.0 : Math.max(0.0, balanceRequiredTillToday - receivedAmount);
                 String issueDateStr = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate().toString() : "-";
                 
                 String closeDateStr = "-";
@@ -232,12 +276,21 @@ public class ReportingServiceImpl implements ReportingService {
                     closeDateStr = loan.getDisbursementDate().toLocalDate().plusDays(loan.getDurationInDays()).toString();
                 }
 
-                double remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
-                String status = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
-
                 Row row = sheet.createRow(rowIdx++);
                 int c = 0;
-                row.createCell(c++).setCellValue(loan.getLoanCode() != null ? loan.getLoanCode() : "");
+
+                // Column 0: Loan Number (Green for RLN/regular, Red for ELN/emergency)
+                String loanCode = loan.getLoanCode() != null ? loan.getLoanCode() : "";
+                Cell loanCodeCell = row.createCell(c++);
+                loanCodeCell.setCellValue(loanCode);
+                if (loanCode.toUpperCase().startsWith("RLN") || loan.getLoanType() == com.dapfintech.loan.enums.LoanType.REGULAR) {
+                    loanCodeCell.setCellStyle(greenLoanStyle);
+                } else if (loanCode.toUpperCase().startsWith("ELN") || loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
+                    loanCodeCell.setCellStyle(redLoanStyle);
+                } else {
+                    loanCodeCell.setCellStyle(centerStyle);
+                }
+
                 row.createCell(c++).setCellValue(getFullName(loan.getCustomer()));
                 row.createCell(c++).setCellValue(dailyEmi);
                 row.createCell(c++).setCellValue(tenure);
@@ -248,7 +301,15 @@ public class ReportingServiceImpl implements ReportingService {
                 row.createCell(c++).setCellValue(closeDateStr);
                 row.createCell(c++).setCellValue(receivedAmount);
                 row.createCell(c++).setCellValue(remainingBalance);
-                row.createCell(c++).setCellValue(status);
+
+                // Column 11: Status (Green for ACTIVE, Red for CLOSED)
+                Cell statusCell = row.createCell(c++);
+                statusCell.setCellValue(status);
+                if (isLoanClosed) {
+                    statusCell.setCellStyle(redStatusStyle);
+                } else {
+                    statusCell.setCellStyle(greenStatusStyle);
+                }
 
                 // Advance simulation across chronological dates
                 java.time.LocalDate issueDate = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate() : null;
@@ -258,6 +319,10 @@ public class ReportingServiceImpl implements ReportingService {
                     Cell cell = row.createCell(c++);
                     if (issueDate != null && d.isBefore(issueDate)) {
                         cell.setCellValue("-");
+                        cell.setCellStyle(centerStyle);
+                    } else if (isLoanClosed && lastCollectionDate != null && d.isAfter(lastCollectionDate)) {
+                        // After closed loan final payment, show nothing (blank cell)
+                        cell.setCellValue("");
                         cell.setCellStyle(centerStyle);
                     } else {
                         double collectedToday = dailyMap.getOrDefault(d, 0.0);
@@ -275,12 +340,16 @@ public class ReportingServiceImpl implements ReportingService {
                             }
                             cell.setCellStyle(centerStyle);
                         } else {
-                            if (dailyEmi > 0 && advanceBalance >= dailyEmi) {
+                            if (!isLoanClosed && dailyEmi > 0 && advanceBalance >= dailyEmi) {
                                 cell.setCellValue("AD");
                                 cell.setCellStyle(yellowStyle);
                                 advanceBalance -= dailyEmi;
-                            } else {
+                            } else if (!isLoanClosed) {
                                 cell.setCellValue("X");
+                                cell.setCellStyle(centerStyle);
+                                advanceBalance = 0.0;
+                            } else {
+                                cell.setCellValue("");
                                 cell.setCellStyle(centerStyle);
                                 advanceBalance = 0.0;
                             }
@@ -288,6 +357,7 @@ public class ReportingServiceImpl implements ReportingService {
                     }
                 }
             }
+
             
             workbook.write(out);
             return new ByteArrayInputStream(out.toByteArray());
@@ -386,6 +456,8 @@ public class ReportingServiceImpl implements ReportingService {
             
             com.lowagie.text.Font font = com.lowagie.text.FontFactory.getFont(com.lowagie.text.FontFactory.HELVETICA, 8);
             com.lowagie.text.Font adFont = com.lowagie.text.FontFactory.getFont(com.lowagie.text.FontFactory.HELVETICA_BOLD, 8, java.awt.Color.BLACK);
+            com.lowagie.text.Font greenFont = com.lowagie.text.FontFactory.getFont(com.lowagie.text.FontFactory.HELVETICA_BOLD, 8, new java.awt.Color(0, 128, 0));
+            com.lowagie.text.Font redFont = com.lowagie.text.FontFactory.getFont(com.lowagie.text.FontFactory.HELVETICA_BOLD, 8, new java.awt.Color(220, 20, 60));
             java.awt.Color yellowColor = new java.awt.Color(255, 235, 59);
             
             for (com.dapfintech.loan.entity.Loan loan : loans) {
@@ -419,6 +491,7 @@ public class ReportingServiceImpl implements ReportingService {
                         .sum();
 
                 double receivedAmount = 0.0;
+                java.time.LocalDate lastCollectionDate = null;
                 java.util.Map<java.time.LocalDate, Double> dailyMap = new java.util.HashMap<>();
                 for (com.dapfintech.loan.entity.LoanCollection lc : allCollections) {
                     if (lc.getLoan() != null && lc.getLoan().getId().equals(loan.getId()) && lc.getCollectedAmount() != null) {
@@ -426,11 +499,22 @@ public class ReportingServiceImpl implements ReportingService {
                         if (lc.getCollectionDate() != null) {
                             java.time.LocalDate cd = lc.getCollectionDate().toLocalDate();
                             dailyMap.put(cd, dailyMap.getOrDefault(cd, 0.0) + lc.getCollectedAmount().doubleValue());
+                            if (lastCollectionDate == null || cd.isAfter(lastCollectionDate)) {
+                                lastCollectionDate = cd;
+                            }
                         }
                     }
                 }
 
-                double gapTillToday = Math.max(0.0, balanceRequiredTillToday - receivedAmount);
+                double remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
+                String status = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
+                boolean isLoanClosed = "CLOSED".equalsIgnoreCase(status) || (remainingBalance <= 0.001);
+
+                if (isLoanClosed && lastCollectionDate == null && loan.getUpdatedAt() != null) {
+                    lastCollectionDate = loan.getUpdatedAt().toLocalDate();
+                }
+
+                double gapTillToday = isLoanClosed ? 0.0 : Math.max(0.0, balanceRequiredTillToday - receivedAmount);
                 String issueDateStr = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate().toString() : "-";
                 
                 String closeDateStr = "-";
@@ -440,10 +524,15 @@ public class ReportingServiceImpl implements ReportingService {
                     closeDateStr = loan.getDisbursementDate().toLocalDate().plusDays(loan.getDurationInDays()).toString();
                 }
 
-                double remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
-                String status = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
+                String loanCode = loan.getLoanCode() != null ? loan.getLoanCode() : "";
+                com.lowagie.text.Font codeFont = font;
+                if (loanCode.toUpperCase().startsWith("RLN") || loan.getLoanType() == com.dapfintech.loan.enums.LoanType.REGULAR) {
+                    codeFont = greenFont;
+                } else if (loanCode.toUpperCase().startsWith("ELN") || loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
+                    codeFont = redFont;
+                }
 
-                table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(loan.getLoanCode() != null ? loan.getLoanCode() : "", font)));
+                table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(loanCode, codeFont)));
                 table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(getFullName(loan.getCustomer()), font)));
                 table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", dailyEmi), font)));
                 table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(tenure, font)));
@@ -454,7 +543,7 @@ public class ReportingServiceImpl implements ReportingService {
                 table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(closeDateStr, font)));
                 table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", receivedAmount), font)));
                 table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", remainingBalance), font)));
-                table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(status, font)));
+                table.addCell(new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(status, isLoanClosed ? redFont : greenFont)));
 
                 // Advance simulation across chronological dates
                 java.time.LocalDate issueDate = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate() : null;
@@ -463,6 +552,11 @@ public class ReportingServiceImpl implements ReportingService {
                 for (java.time.LocalDate d : dateColumns) {
                     if (issueDate != null && d.isBefore(issueDate)) {
                         com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("-", font));
+                        cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+                        table.addCell(cell);
+                    } else if (isLoanClosed && lastCollectionDate != null && d.isAfter(lastCollectionDate)) {
+                        // After closed loan final payment, show nothing (blank cell)
+                        com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("", font));
                         cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
                         table.addCell(cell);
                     } else {
@@ -481,15 +575,20 @@ public class ReportingServiceImpl implements ReportingService {
                             cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
                             table.addCell(cell);
                         } else {
-                            if (dailyEmi > 0 && advanceBalance >= dailyEmi) {
+                            if (!isLoanClosed && dailyEmi > 0 && advanceBalance >= dailyEmi) {
                                 com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("AD", adFont));
                                 cell.setBackgroundColor(yellowColor);
                                 cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
                                 cell.setVerticalAlignment(com.lowagie.text.Element.ALIGN_MIDDLE);
                                 table.addCell(cell);
                                 advanceBalance -= dailyEmi;
-                            } else {
+                            } else if (!isLoanClosed) {
                                 com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("X", font));
+                                cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+                                table.addCell(cell);
+                                advanceBalance = 0.0;
+                            } else {
+                                com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("", font));
                                 cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
                                 table.addCell(cell);
                                 advanceBalance = 0.0;

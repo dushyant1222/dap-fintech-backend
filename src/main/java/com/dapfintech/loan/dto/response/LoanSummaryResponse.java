@@ -16,6 +16,8 @@ public class LoanSummaryResponse {
 
     private BigDecimal disbursedAmount;
 
+    private BigDecimal totalLoanAmount;
+
     private BigDecimal totalCollected;
 
     private BigDecimal outstandingAmount;

@@ -1199,6 +1199,21 @@ public class LoanServiceImpl
         BigDecimal outstandingAmount = repaymentScheduleRepository.getSumOutstandingByLoan(loanId);
         if (outstandingAmount == null) outstandingAmount = BigDecimal.ZERO;
 
+        BigDecimal totalLoanAmount = repaymentScheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loanId)
+                .stream()
+                .map(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (totalLoanAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal principal = loan.getApprovedAmount() != null ? loan.getApprovedAmount()
+                    : (loan.getDisbursedAmount() != null ? loan.getDisbursedAmount() : loan.getLoanAmount());
+            if (principal == null) principal = BigDecimal.ZERO;
+            BigDecimal interest = (principal.compareTo(BigDecimal.ZERO) > 0 && loan.getInterestRate() != null)
+                    ? principal.multiply(loan.getInterestRate()).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+            totalLoanAmount = principal.add(interest);
+        }
+
         return LoanSummaryResponse
                 .builder()
                 .loanId(
@@ -1209,6 +1224,9 @@ public class LoanServiceImpl
                 )
                 .disbursedAmount(
                         loan.getDisbursedAmount()
+                )
+                .totalLoanAmount(
+                        totalLoanAmount
                 )
                 .totalCollected(
                         totalCollected
