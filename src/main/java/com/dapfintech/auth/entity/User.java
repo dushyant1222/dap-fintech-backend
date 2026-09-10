@@ -62,5 +62,15 @@ public class User  extends BaseEntity{
 	@Column(name="onesignal_id")
 	private String onesignalId;
 
+	public boolean isAdmin() {
+		if (role == null || role.getRoleName() == null) {
+			return true;
+		}
+		String r = role.getRoleName().trim().toUpperCase();
+		return !r.equals("EMPLOYEE") && !r.equals("FIELD_AGENT") && !r.equals("COLLECTOR");
+	}
 
+	public boolean isEmployee() {
+		return !isAdmin();
+	}
 }

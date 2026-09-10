@@ -297,9 +297,7 @@ public class LoanCollectionServiceImpl
 
         List<OverdueCustomerProjection> projections;
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             projections =
                     scheduleRepository
@@ -317,8 +315,8 @@ public class LoanCollectionServiceImpl
                     scheduleRepository
                             .getOverdueCustomersByMarket(
                                     assignment
-                                            .getMarket()
-                                            .getId()
+                                             .getMarket()
+                                             .getId()
                             );
 
         }
@@ -371,9 +369,7 @@ public class LoanCollectionServiceImpl
 
     	User user = getLoggedInUser();
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             return CollectionDashboardResponse
                     .builder()
@@ -462,9 +458,7 @@ public class LoanCollectionServiceImpl
 
         List<TodayScheduleProjection> projections;
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             projections =
                     collectionRepository
@@ -550,9 +544,7 @@ public class LoanCollectionServiceImpl
 
         List<PendingCollectionProjection> projections;
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             projections =
                     collectionRepository
@@ -638,9 +630,7 @@ public class LoanCollectionServiceImpl
 
         List<CollectionHistoryProjection> projections;
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             projections =
                     collectionRepository
@@ -855,25 +845,20 @@ public class LoanCollectionServiceImpl
             );
         }
 
-        if (customer.getMarket() == null) {
-            throw new RuntimeException(
-                    "Customer market not assigned"
-            );
-        }
-
         /*
          * ADMIN can collect for any customer.
          *
          * EMPLOYEE must have an active assignment
          * for the customer's market.
          */
-        boolean isAdmin =
-                loggedInEmployee
-                        .getRole()
-                        .getRoleName()
-                        .equalsIgnoreCase("ADMIN");
+        boolean isAdmin = loggedInEmployee.isAdmin();
 
         if (!isAdmin) {
+            if (customer.getMarket() == null) {
+                throw new RuntimeException(
+                        "Customer market not assigned"
+                );
+            }
 
             boolean authorized =
                     assignmentRepository

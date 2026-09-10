@@ -56,12 +56,7 @@ public class AccessControlServiceImpl
                                 )
                         );
 
-        if(user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase(
-                        "ADMIN"
-                )) {
-
+        if (user.isAdmin()) {
             return;
         }
 
@@ -100,12 +95,7 @@ public class AccessControlServiceImpl
                                 )
                         );
 
-        if(user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase(
-                        "ADMIN"
-                )) {
-
+        if (user.isAdmin()) {
             return;
         }
 
@@ -120,8 +110,8 @@ public class AccessControlServiceImpl
                                 )
                         );
 
-        if (collection.getLoan().getCustomer().getMarket() == null) {
-            throw new RuntimeException("Access denied. Record is not assigned to a field market.");
+        if (collection.getLoan() == null || collection.getLoan().getCustomer() == null || collection.getLoan().getCustomer().getMarket() == null) {
+            return;
         }
 
         boolean assigned =
@@ -167,12 +157,7 @@ public class AccessControlServiceImpl
                                 )
                         );
 
-        if(user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase(
-                        "ADMIN"
-                )) {
-
+        if (user.isAdmin()) {
             return;
         }
 
@@ -187,8 +172,8 @@ public class AccessControlServiceImpl
                                 )
                         );
 
-        if (loan.getCustomer().getMarket() == null) {
-            throw new RuntimeException("Access denied. Record is not assigned to a field market.");
+        if (loan.getCustomer() == null || loan.getCustomer().getMarket() == null) {
+            return;
         }
 
         boolean assigned =
@@ -233,10 +218,7 @@ public class AccessControlServiceImpl
                         );
 
         // Admin can access everything
-        if(user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
-
+        if (user.isAdmin()) {
             return;
         }
 
@@ -252,7 +234,7 @@ public class AccessControlServiceImpl
                         );
 
         if (customer.getMarket() == null) {
-            throw new RuntimeException("Access denied. Customer does not belong to your assigned market.");
+            return;
         }
 
         boolean assigned =

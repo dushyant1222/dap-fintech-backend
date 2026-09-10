@@ -268,7 +268,7 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         User user = userRepository.findByMobileNumber(auth.getName())
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found"));
-        if (!user.getRole().getRoleName().equalsIgnoreCase("ADMIN")) {
+        if (!user.isAdmin()) {
             throw new RuntimeException("Only ADMIN can perform this action");
         }
         return user;

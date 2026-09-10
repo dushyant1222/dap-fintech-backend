@@ -237,9 +237,7 @@ public class CustomerServiceImpl
         // ADMIN
         //----------------------------------------------------------
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             return customerRepository
                     .findAll(
@@ -450,7 +448,7 @@ public class CustomerServiceImpl
                         );
         customer.setCreatedBy(employee);
         
-        if (employee.getRole().getRoleName().equalsIgnoreCase("ADMIN")) {
+        if (employee.isAdmin()) {
             if (request.getMarketId() != null) {
                 Market market = marketRepository.findById(request.getMarketId())
                         .orElseThrow(() -> new RuntimeException("Market not found"));
@@ -794,11 +792,7 @@ public class CustomerServiceImpl
                                 )
                         );
 
-        if(user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase(
-                        "ADMIN"
-                )) {
+        if (user.isAdmin()) {
 
             return customerRepository
                     .findAll(
@@ -865,11 +859,7 @@ public class CustomerServiceImpl
                                 )
                         );
 
-        if(user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase(
-                        "ADMIN"
-                )) {
+        if (user.isAdmin()) {
 
             return customerRepository
                     .findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCaseOrMobileNumberContaining(
@@ -944,8 +934,7 @@ public class CustomerServiceImpl
         String trimmedKeyword = (keyword != null && !keyword.trim().isEmpty()) ? keyword.trim() : null;
         PageRequest pageRequest = PageRequest.of(page, size);
 
-        if (user.getRole().getRoleName().equalsIgnoreCase("ADMIN") ||
-            user.getRole().getRoleName().equalsIgnoreCase("SUPER_ADMIN")) {
+        if (user.isAdmin()) {
             return customerRepository
                     .findCustomersWithoutActiveLoans(
                             trimmedKeyword,

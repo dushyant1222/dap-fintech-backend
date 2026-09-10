@@ -66,10 +66,6 @@ public class LoanDisbursementServiceImpl
         User loggedInUser = userRepository.findByMobileNumber(auth.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        if (!"EMPLOYEE".equals(loggedInUser.getRole().getRoleName())) {
-            throw new RuntimeException("Only employees can disburse loans");
-        }
-
         if (loanDisbursementRepository
                 .findByLoanId(loanId)
                 .isPresent()) {
@@ -150,15 +146,16 @@ public class LoanDisbursementServiceImpl
                 loan.getId()
         );
 
-        LocalDate today = LocalDate.now();
-        try {
-            com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
-            dbReq.setType("LOANS_DISBURSED");
-            dbReq.setAmount(netDisbursedAmount);
-            dbReq.setRemarks("New Loan: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
-            dayBookService.addTransaction(loggedInUser.getId(), dbReq);
-        } catch(Exception e) {
-            e.printStackTrace();
+        if (!loggedInUser.isAdmin()) {
+            try {
+                com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
+                dbReq.setType("LOANS_DISBURSED");
+                dbReq.setAmount(netDisbursedAmount);
+                dbReq.setRemarks("New Loan: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
+                dayBookService.addTransaction(loggedInUser.getId(), dbReq);
+            } catch(Exception e) {
+                e.printStackTrace();
+            }
         }
 
         return mapper.toResponse(

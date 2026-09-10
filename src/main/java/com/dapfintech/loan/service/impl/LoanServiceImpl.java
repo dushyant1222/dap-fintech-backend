@@ -123,9 +123,7 @@ public class LoanServiceImpl
         // ADMIN
         //----------------------------------------------------------
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             return loanRepository
 
@@ -216,9 +214,7 @@ public class LoanServiceImpl
                                 )
                         );
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             return LoanStatisticsResponse
                     .builder()
@@ -360,9 +356,7 @@ public class LoanServiceImpl
         // ADMIN
         // ==========================
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             Page<Loan> loans;
 
@@ -467,9 +461,7 @@ public class LoanServiceImpl
                                 )
                         );
 
-        if (user.getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (user.isAdmin()) {
 
             return loanRepository
 
@@ -968,10 +960,7 @@ public class LoanServiceImpl
         // ADMIN ONLY
         //----------------------------------------------------------
 
-        if (!currentUser
-                .getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (!currentUser.isAdmin()) {
 
             throw new RuntimeException(
                     "Only admin can edit a submitted loan"

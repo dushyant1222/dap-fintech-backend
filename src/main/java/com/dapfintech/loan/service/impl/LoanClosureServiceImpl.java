@@ -83,10 +83,7 @@ public class LoanClosureServiceImpl
         // ADMIN ONLY
         //----------------------------------------------------------
 
-        if (!currentUser
-                .getRole()
-                .getRoleName()
-                .equalsIgnoreCase("ADMIN")) {
+        if (!currentUser.isAdmin()) {
 
             throw new RuntimeException(
                     "Only admin can close a loan"
