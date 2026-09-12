@@ -38,16 +38,14 @@ public class OnboardSingleLoanRequest {
     @NotNull(message = "Principal amount is required")
     private BigDecimal principalAmount;
 
-    @NotNull(message = "Interest rate is required")
+    @NotNull(message = "Interest rate / Flat amount is required")
     private BigDecimal interestRate;
 
     @Builder.Default
     private InterestType interestType = InterestType.FLAT;
 
-    @NotNull(message = "Tenure is required")
     private Integer tenure;
 
-    @NotNull(message = "Repayment frequency is required")
     private RepaymentFrequency repaymentFrequency;
 
     @NotNull(message = "Disbursement date is required")
@@ -57,4 +55,59 @@ public class OnboardSingleLoanRequest {
     private BigDecimal totalCollectedSoFar = BigDecimal.ZERO;
 
     private LocalDate lastPaymentDate;
+
+    public void setLoanType(Object value) {
+        if (value == null) {
+            this.loanType = LoanType.REGULAR;
+            return;
+        }
+        if (value instanceof LoanType) {
+            this.loanType = (LoanType) value;
+            return;
+        }
+        String str = value.toString().trim().toUpperCase();
+        if ("ELN".equals(str) || "EMERGENCY".equals(str)) {
+            this.loanType = LoanType.EMERGENCY;
+        } else {
+            this.loanType = LoanType.REGULAR;
+        }
+    }
+
+    public void setInterestType(Object value) {
+        if (value == null) {
+            this.interestType = InterestType.FLAT;
+            return;
+        }
+        if (value instanceof InterestType) {
+            this.interestType = (InterestType) value;
+            return;
+        }
+        String str = value.toString().trim().toUpperCase();
+        if (str.contains("DIRECT") || str.contains("FLAT_DIRECT")) {
+            this.interestType = InterestType.FLAT_DIRECT;
+        } else if (str.contains("MONTH")) {
+            this.interestType = InterestType.FLAT_PER_MONTH;
+        } else {
+            this.interestType = InterestType.FLAT;
+        }
+    }
+
+    public void setRepaymentFrequency(Object value) {
+        if (value == null) {
+            this.repaymentFrequency = RepaymentFrequency.EDI;
+            return;
+        }
+        if (value instanceof RepaymentFrequency) {
+            this.repaymentFrequency = (RepaymentFrequency) value;
+            return;
+        }
+        String str = value.toString().trim().toUpperCase();
+        if (str.contains("WEEK") || "EWI".equals(str)) {
+            this.repaymentFrequency = RepaymentFrequency.EWI;
+        } else if (str.contains("MONTH") || "EMI".equals(str)) {
+            this.repaymentFrequency = RepaymentFrequency.EMI;
+        } else {
+            this.repaymentFrequency = RepaymentFrequency.EDI;
+        }
+    }
 }
