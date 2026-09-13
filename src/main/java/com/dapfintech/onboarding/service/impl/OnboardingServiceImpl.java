@@ -116,7 +116,7 @@ public class OnboardingServiceImpl implements OnboardingService {
             Object[][] sampleData = {
                 {"Rahul Sharma", "9876543210", "Shop 12, Main Bazar", "Civil Lines", "9123456780", "REGULAR", "15/07/2026", 10000, "FLAT", 20, 100, "EDI", 6400, "09/09/2026"},
                 {"Amit Verma", "9876543211", "House 45, Gandhi Nagar", "Aminabad", "9123456780", "REGULAR", "01/08/2026", 20000, "FLAT_DIRECT", 2000, 100, "EDI", 12000, "08/09/2026"},
-                {"Suresh Kumar", "9876543212", "Shop 8, Vegetable Market", "Chowk", "", "EMERGENCY", "10/08/2026", 5000, "FLAT", 1, 0, "EDI", 1500, "09/09/2026"}
+                {"Suresh Kumar", "9876543212", "Shop 8, Vegetable Market", "Chowk", "", "EMERGENCY", "10/08/2026", 5000, "FLAT_DIRECT", 500, 0, "EDI", 1500, "09/09/2026"}
             };
 
             for (int r = 0; r < sampleData.length; r++) {
@@ -298,7 +298,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         LocalDate disDate = req.getDisbursementDate() != null ? req.getDisbursementDate() : LocalDate.now();
 
         boolean isEmergency = req.getLoanType() == LoanType.EMERGENCY;
-        InterestType intType = isEmergency ? InterestType.FLAT : (req.getInterestType() != null ? req.getInterestType() : InterestType.FLAT);
+        InterestType intType = req.getInterestType() != null ? req.getInterestType() : (isEmergency ? InterestType.FLAT_DIRECT : InterestType.FLAT_DIRECT);
         int loanTenure = isEmergency ? 0 : (req.getTenure() != null ? req.getTenure() : 0);
         RepaymentFrequency freq = isEmergency ? RepaymentFrequency.EDI : (req.getRepaymentFrequency() != null ? req.getRepaymentFrequency() : RepaymentFrequency.EDI);
 
@@ -325,49 +325,85 @@ public class OnboardingServiceImpl implements OnboardingService {
 
         // 6. Generate Historical Schedule
         if (isEmergency) {
-            // For emergency loans: Generate daily interest schedules from disbursement date up to today
             BigDecimal principal = savedLoan.getApprovedAmount();
-            BigDecimal dailyInterest = principal
-                    .multiply(savedLoan.getInterestRate())
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-            LocalDate currDate = disDate;
-            LocalDate today = LocalDate.now();
             List<LoanRepaymentSchedule> emergencySchedules = new ArrayList<>();
-            int instNum = 1;
 
-            while (!currDate.isAfter(today)) {
-                LoanRepaymentSchedule sched = LoanRepaymentSchedule.builder()
-                        .loan(savedLoan)
-                        .installmentNumber(instNum++)
-                        .dueDate(currDate)
-                        .principalAmount(BigDecimal.ZERO)
-                        .interestAmount(dailyInterest)
-                        .installmentAmount(dailyInterest)
-                        .dueAmount(dailyInterest)
-                        .paidAmount(BigDecimal.ZERO)
-                        .outstandingAmount(dailyInterest)
-                        .repaymentStatus(RepaymentStatus.PENDING)
-                        .build();
-                emergencySchedules.add(sched);
-                currDate = currDate.plusDays(1);
-            }
+            if (intType == InterestType.FLAT_DIRECT) {
+                // Emergency Loan with Flat Amount
+                BigDecimal flatInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
 
-            if (emergencySchedules.isEmpty()) {
-                // If disbursement date is today or future, at least 1 schedule item
-                LoanRepaymentSchedule sched = LoanRepaymentSchedule.builder()
+                // Schedule 1: Flat Interest (due on disbursement date)
+                if (flatInterest.compareTo(BigDecimal.ZERO) > 0) {
+                    emergencySchedules.add(LoanRepaymentSchedule.builder()
+                            .loan(savedLoan)
+                            .installmentNumber(1)
+                            .dueDate(disDate)
+                            .principalAmount(BigDecimal.ZERO)
+                            .interestAmount(flatInterest)
+                            .installmentAmount(flatInterest)
+                            .dueAmount(flatInterest)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(flatInterest)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build());
+                }
+
+                // Schedule 2: Principal (repayable on closure)
+                emergencySchedules.add(LoanRepaymentSchedule.builder()
                         .loan(savedLoan)
-                        .installmentNumber(1)
-                        .dueDate(disDate)
-                        .principalAmount(BigDecimal.ZERO)
-                        .interestAmount(dailyInterest)
-                        .installmentAmount(dailyInterest)
-                        .dueAmount(dailyInterest)
+                        .installmentNumber(emergencySchedules.size() + 1)
+                        .dueDate(LocalDate.now())
+                        .principalAmount(principal)
+                        .interestAmount(BigDecimal.ZERO)
+                        .installmentAmount(principal)
+                        .dueAmount(principal)
                         .paidAmount(BigDecimal.ZERO)
-                        .outstandingAmount(dailyInterest)
+                        .outstandingAmount(principal)
                         .repaymentStatus(RepaymentStatus.PENDING)
-                        .build();
-                emergencySchedules.add(sched);
+                        .build());
+            } else {
+                // Percentage daily interest model
+                BigDecimal dailyInterest = principal
+                        .multiply(savedLoan.getInterestRate())
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+                LocalDate currDate = disDate;
+                LocalDate today = LocalDate.now();
+                int instNum = 1;
+
+                while (!currDate.isAfter(today)) {
+                    LoanRepaymentSchedule sched = LoanRepaymentSchedule.builder()
+                            .loan(savedLoan)
+                            .installmentNumber(instNum++)
+                            .dueDate(currDate)
+                            .principalAmount(BigDecimal.ZERO)
+                            .interestAmount(dailyInterest)
+                            .installmentAmount(dailyInterest)
+                            .dueAmount(dailyInterest)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(dailyInterest)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build();
+                    emergencySchedules.add(sched);
+                    currDate = currDate.plusDays(1);
+                }
+
+                if (emergencySchedules.isEmpty()) {
+                    // If disbursement date is today or future, at least 1 schedule item
+                    LoanRepaymentSchedule sched = LoanRepaymentSchedule.builder()
+                            .loan(savedLoan)
+                            .installmentNumber(1)
+                            .dueDate(disDate)
+                            .principalAmount(BigDecimal.ZERO)
+                            .interestAmount(dailyInterest)
+                            .installmentAmount(dailyInterest)
+                            .dueAmount(dailyInterest)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(dailyInterest)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build();
+                    emergencySchedules.add(sched);
+                }
             }
 
             scheduleRepository.saveAll(emergencySchedules);
@@ -561,7 +597,9 @@ public class OnboardingServiceImpl implements OnboardingService {
         } else {
             tenure = 0;
             freq = RepaymentFrequency.EDI;
-            intType = InterestType.FLAT;
+            if (!hasInterestTypeCol) {
+                intType = InterestType.FLAT_DIRECT;
+            }
         }
 
         if (collected == null) {
