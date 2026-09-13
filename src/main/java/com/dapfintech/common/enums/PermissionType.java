@@ -20,6 +20,8 @@ public enum PermissionType {
 
 	AUDIT_VIEW,
 
-	CLOSE_LEDGER
+	CLOSE_LEDGER,
+
+	DATA_ONBOARDING
 
 }

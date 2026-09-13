@@ -52,30 +52,42 @@ public class AdminSeeder implements CommandLineRunner {
         Role masterAdminRole = roleRepository.findByRoleName("MASTER_ADMIN")
                 .orElseGet(() -> roleRepository.findByRoleName("ADMIN").orElseThrow());
 
-        var existingUserOpt = userRepository.findByMobileNumber("9999999999");
-        if (existingUserOpt.isPresent()) {
-            User existing = existingUserOpt.get();
+        // Check if 9311111335 already exists
+        var user9311 = userRepository.findByMobileNumber("9311111335");
+        if (user9311.isPresent()) {
+            User existing = user9311.get();
             existing.setFullName("Master Admin");
             existing.setRole(masterAdminRole);
             existing.setStatus(UserStatus.ACTIVE);
             userRepository.save(existing);
-            System.out.println("Default Master Admin updated to MASTER_ADMIN role");
+            System.out.println("Default Master Admin (9311111335) verified as MASTER_ADMIN");
             return;
         }
 
+        // Migrate 9999999999 to 9311111335 if found
+        var user9999 = userRepository.findByMobileNumber("9999999999");
+        if (user9999.isPresent()) {
+            User existing = user9999.get();
+            existing.setFullName("Master Admin");
+            existing.setMobileNumber("9311111335");
+            existing.setPasswordHash(passwordEncoder.encode("Admin@123"));
+            existing.setRole(masterAdminRole);
+            existing.setStatus(UserStatus.ACTIVE);
+            userRepository.save(existing);
+            System.out.println("Master Admin migrated from 9999999999 to 9311111335 successfully");
+            return;
+        }
+
+        // Create new default master admin with 9311111335
         User admin = User.builder()
                 .fullName("Master Admin")
-                .mobileNumber("9999999999")
-                .passwordHash(
-                        passwordEncoder.encode(
-                                "Admin@123"
-                        )
-                )
+                .mobileNumber("9311111335")
+                .passwordHash(passwordEncoder.encode("Admin@123"))
                 .role(masterAdminRole)
                 .status(UserStatus.ACTIVE)
                 .build();
 
         userRepository.save(admin);
-        System.out.println("Default Master Admin created");
+        System.out.println("Default Master Admin (9311111335) created");
     }
 }

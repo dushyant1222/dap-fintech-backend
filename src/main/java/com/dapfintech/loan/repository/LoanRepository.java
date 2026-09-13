@@ -91,6 +91,9 @@ public interface LoanRepository
     Long countByLoanStatus(
             LoanStatus loanStatus
     );
+
+    @Query("SELECT l.loanStatus, COUNT(l) FROM Loan l GROUP BY l.loanStatus")
+    List<Object[]> countGroupedByLoanStatus();
     
     
     @Query(value = """

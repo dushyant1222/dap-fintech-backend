@@ -73,6 +73,19 @@ public class AdminDashboardServiceImpl
         TopCollectorProjection topCollector =
                 collectionRepository.getTopCollector();
 
+        long pendingLoans = 0, approvedLoans = 0, rejectedLoans = 0, activeLoans = 0, closedLoans = 0, totalLoans = 0;
+        List<Object[]> statusRows = loanRepository.countGroupedByLoanStatus();
+        for (Object[] row : statusRows) {
+            LoanStatus status = (LoanStatus) row[0];
+            long cnt = ((Number) row[1]).longValue();
+            totalLoans += cnt;
+            if (status == LoanStatus.PENDING_APPROVAL) pendingLoans = cnt;
+            else if (status == LoanStatus.APPROVED) approvedLoans = cnt;
+            else if (status == LoanStatus.REJECTED) rejectedLoans = cnt;
+            else if (status == LoanStatus.ACTIVE) activeLoans = cnt;
+            else if (status == LoanStatus.CLOSED) closedLoans = cnt;
+        }
+
         return AdminDashboardResponse.builder()
 
                 //---------------- Employees ----------------
@@ -88,28 +101,17 @@ public class AdminDashboardServiceImpl
 
                 //---------------- Loans ----------------
 
-                .totalLoans(
-                        loanRepository.count())
+                .totalLoans(totalLoans)
 
-                .activeLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.ACTIVE))
+                .activeLoans(activeLoans)
 
-                .approvedLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.APPROVED))
+                .approvedLoans(approvedLoans)
 
-                .pendingLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.PENDING_APPROVAL))
+                .pendingLoans(pendingLoans)
 
-                .rejectedLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.REJECTED))
+                .rejectedLoans(rejectedLoans)
 
-                .closedLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.CLOSED))
+                .closedLoans(closedLoans)
 
                 //---------------- EMI ----------------
 

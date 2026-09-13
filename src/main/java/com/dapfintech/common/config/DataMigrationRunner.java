@@ -48,7 +48,8 @@ public class DataMigrationRunner implements CommandLineRunner {
             {"ENQUIRIES", "Enquiry Management", "View and process customer market enquiries"},
             {"REPORTS", "Reports", "Access and view market summary and daily ledger reports"},
             {"GPS_REQUIRED", "Security & Tracking", "Enforce live GPS location verification during collections"},
-            {"CAMERA_REQUIRED", "Security & Tracking", "Enforce camera capture during collection and KYC"}
+            {"CAMERA_REQUIRED", "Security & Tracking", "Enforce camera capture during collection and KYC"},
+            {"DATA_ONBOARDING", "Data Onboarding", "Onboard historical customer loans and spreadsheet bulk import"}
         };
 
         for (String[] p : standardPermissions) {

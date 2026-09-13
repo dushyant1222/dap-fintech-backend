@@ -34,6 +34,8 @@ public enum EmployeePermissionType {
 
     CAMERA_REQUIRED,
 
-    CLOSE_LEDGER
+    CLOSE_LEDGER,
+
+    DATA_ONBOARDING
 
 }

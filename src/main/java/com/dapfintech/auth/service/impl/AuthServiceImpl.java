@@ -120,7 +120,8 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
-        boolean isMaster = "9999999999".equals(user.getMobileNumber()) || 
+        boolean isMaster = "9311111335".equals(user.getMobileNumber()) ||
+                          "9999999999".equals(user.getMobileNumber()) || 
                           (user.getRole() != null && "MASTER_ADMIN".equalsIgnoreCase(user.getRole().getRoleName()));
 
         return LoginResponse.builder()

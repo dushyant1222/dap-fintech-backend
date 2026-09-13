@@ -17,48 +17,28 @@ public class LoanManagementServiceImpl
     private final LoanRepository loanRepository;
 
     @Override
-    public LoanManagementDashboardResponse
-    getDashboard() {
+    public LoanManagementDashboardResponse getDashboard() {
+        long pending = 0, approved = 0, rejected = 0, active = 0, closed = 0, total = 0;
+        java.util.List<Object[]> rows = loanRepository.countGroupedByLoanStatus();
+        for (Object[] row : rows) {
+            LoanStatus status = (LoanStatus) row[0];
+            long cnt = ((Number) row[1]).longValue();
+            total += cnt;
+            if (status == LoanStatus.PENDING_APPROVAL) pending = cnt;
+            else if (status == LoanStatus.APPROVED) approved = cnt;
+            else if (status == LoanStatus.REJECTED) rejected = cnt;
+            else if (status == LoanStatus.ACTIVE) active = cnt;
+            else if (status == LoanStatus.CLOSED) closed = cnt;
+        }
 
-        return LoanManagementDashboardResponse
-                .builder()
-
-                .totalLoans(
-                        loanRepository.count()
-                )
-
-                .pendingApprovalLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.PENDING_APPROVAL
-                        )
-                )
-
-                .approvedLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.APPROVED
-                        )
-                )
-
-                .rejectedLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.REJECTED
-                        )
-                )
-
-                .activeLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.ACTIVE
-                        )
-                )
-
-                .closedLoans(
-                        loanRepository.countByLoanStatus(
-                                LoanStatus.CLOSED
-                        )
-                )
-
+        return LoanManagementDashboardResponse.builder()
+                .totalLoans(total)
+                .pendingApprovalLoans(pending)
+                .approvedLoans(approved)
+                .rejectedLoans(rejected)
+                .activeLoans(active)
+                .closedLoans(closed)
                 .build();
-
     }
 
 }
