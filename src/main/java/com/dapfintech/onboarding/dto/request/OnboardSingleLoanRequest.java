@@ -38,6 +38,8 @@ public class OnboardSingleLoanRequest {
     @NotNull(message = "Principal amount is required")
     private BigDecimal principalAmount;
 
+    private BigDecimal disbursedAmount;
+
     @NotNull(message = "Interest rate / Flat amount is required")
     private BigDecimal interestRate;
 

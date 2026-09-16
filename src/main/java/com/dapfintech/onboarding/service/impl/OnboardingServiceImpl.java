@@ -297,10 +297,29 @@ public class OnboardingServiceImpl implements OnboardingService {
 
         LocalDate disDate = req.getDisbursementDate() != null ? req.getDisbursementDate() : LocalDate.now();
 
+        // 3.5 Duplicate / Idempotency Protection:
+        // Check if an identical loan was created for this customer within the last 10 minutes
+        List<Loan> existingCustomerLoans = loanRepository.findByCustomerId(customer.getId());
+        LocalDateTime tenMinutesAgo = LocalDateTime.now().minusMinutes(10);
+        for (Loan el : existingCustomerLoans) {
+            if (el.getCreatedAt() != null && el.getCreatedAt().isAfter(tenMinutesAgo)
+                    && el.getLoanType() == req.getLoanType()
+                    && el.getApprovedAmount() != null && el.getApprovedAmount().compareTo(req.getPrincipalAmount()) == 0
+                    && el.getDisbursementDate() != null && el.getDisbursementDate().toLocalDate().isEqual(disDate)) {
+                log.info("Duplicate onboarding request detected for customer {} ({}) and loan {}. Returning existing loan code: {}",
+                        customer.getFirstName(), customer.getMobileNumber(), el.getId(), el.getLoanCode());
+                return el;
+            }
+        }
+
         boolean isEmergency = req.getLoanType() == LoanType.EMERGENCY;
         InterestType intType = req.getInterestType() != null ? req.getInterestType() : (isEmergency ? InterestType.FLAT_DIRECT : InterestType.FLAT_DIRECT);
         int loanTenure = isEmergency ? 0 : (req.getTenure() != null ? req.getTenure() : 0);
         RepaymentFrequency freq = isEmergency ? RepaymentFrequency.EDI : (req.getRepaymentFrequency() != null ? req.getRepaymentFrequency() : RepaymentFrequency.EDI);
+
+        BigDecimal disbursed = (req.getDisbursedAmount() != null && req.getDisbursedAmount().compareTo(BigDecimal.ZERO) > 0)
+                ? req.getDisbursedAmount()
+                : req.getPrincipalAmount();
 
         // 5. Create Active Loan
         Loan loan = Loan.builder()
@@ -309,7 +328,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 .loanType(req.getLoanType())
                 .loanAmount(req.getPrincipalAmount())
                 .approvedAmount(req.getPrincipalAmount())
-                .disbursedAmount(req.getPrincipalAmount())
+                .disbursedAmount(disbursed)
                 .interestRate(req.getInterestRate())
                 .interestType(intType)
                 .tenure(loanTenure)
@@ -606,6 +625,15 @@ public class OnboardingServiceImpl implements OnboardingService {
             collected = BigDecimal.ZERO;
         }
 
+        BigDecimal disbursed = null;
+        int lastCol = hasInterestTypeCol ? 14 : 13;
+        if (row.getLastCellNum() > lastCol) {
+            disbursed = getCellBigDecimal(row.getCell(lastCol));
+        }
+        if (disbursed == null || disbursed.compareTo(BigDecimal.ZERO) <= 0) {
+            disbursed = principal;
+        }
+
         return OnboardSingleLoanRequest.builder()
                 .customerName(custName)
                 .mobileNumber(mobile)
@@ -615,6 +643,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 .loanType(loanType)
                 .disbursementDate(disDate)
                 .principalAmount(principal)
+                .disbursedAmount(disbursed)
                 .interestRate(interestRate)
                 .interestType(intType)
                 .tenure(tenure)

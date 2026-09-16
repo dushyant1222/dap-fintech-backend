@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.dapfintech.auth.repository.EmployeePermissionRepository;
 import com.dapfintech.auth.repository.UserRepository;
+import com.dapfintech.auth.service.EmployeePermissionService;
 import com.dapfintech.common.response.ApiResponse;
 import com.dapfintech.loan.dto.response.LoanResponse;
 import com.dapfintech.onboarding.dto.request.OnboardSingleLoanRequest;
@@ -35,6 +36,7 @@ public class OnboardingController {
     private final OnboardingService onboardingService;
     private final UserRepository userRepository;
     private final EmployeePermissionRepository employeePermissionRepository;
+    private final EmployeePermissionService employeePermissionService;
 
     private void checkOnboardingPermission() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
@@ -49,7 +51,7 @@ public class OnboardingController {
             return; // Admins always have access
         }
 
-        boolean allowed = employeePermissionRepository.existsByEmployeeIdAndPermissionPermissionKeyAndAllowedTrue(
+        boolean allowed = employeePermissionService.hasPermission(
                 user.getId(), "DATA_ONBOARDING"
         );
         if (!allowed) {
