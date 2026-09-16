@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -194,4 +195,32 @@ public interface LoanRepository
             WHERE s.repayment_status = 'PAID'
             """, nativeQuery = true)
     BigDecimal getTotalInterestCollected();
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_collections WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteCollectionsByLoanId(@Param("loanId") UUID loanId);
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_repayment_schedules WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteSchedulesByLoanId(@Param("loanId") UUID loanId);
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_charges WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteChargesByLoanId(@Param("loanId") UUID loanId);
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_documents WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteDocumentsByLoanId(@Param("loanId") UUID loanId);
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_approvals WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteApprovalsByLoanId(@Param("loanId") UUID loanId);
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_disbursements WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteDisbursementsByLoanId(@Param("loanId") UUID loanId);
+
+    @Modifying
+    @Query(value = "DELETE FROM loan_closures WHERE loan_id = :loanId", nativeQuery = true)
+    void deleteClosuresByLoanId(@Param("loanId") UUID loanId);
 }

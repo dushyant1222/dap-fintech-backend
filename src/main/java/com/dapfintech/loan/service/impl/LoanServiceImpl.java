@@ -20,6 +20,7 @@ import com.dapfintech.loan.dto.request.LoanFilterRequest;
 import com.dapfintech.loan.specification.LoanSpecification;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.dapfintech.audit.service.AuditLogService;
 import com.dapfintech.customer.entity.Customer;
@@ -1155,10 +1156,34 @@ public class LoanServiceImpl
     }
 
     @Override
+    @Transactional
     public void deleteLoan(
             UUID loanId
     ) {
-    	accessControlService
+        Authentication authentication =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        String mobileNumber =
+                authentication.getName();
+
+        User user =
+                userRepository
+                        .findByMobileNumber(
+                                mobileNumber
+                        )
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "User not found"
+                                )
+                        );
+
+        if (!user.isAdmin()) {
+            throw new RuntimeException("Only Admin can delete loans");
+        }
+
+        accessControlService
         .validateLoanAccess(
                 loanId
         );
@@ -1170,6 +1195,15 @@ public class LoanServiceImpl
                                         "Loan not found"
                                 )
                         );
+
+        // Delete all child entities in foreign-key order
+        loanRepository.deleteCollectionsByLoanId(loanId);
+        loanRepository.deleteSchedulesByLoanId(loanId);
+        loanRepository.deleteChargesByLoanId(loanId);
+        loanRepository.deleteDocumentsByLoanId(loanId);
+        loanRepository.deleteApprovalsByLoanId(loanId);
+        loanRepository.deleteDisbursementsByLoanId(loanId);
+        loanRepository.deleteClosuresByLoanId(loanId);
 
         loanRepository.delete(loan);
     }
