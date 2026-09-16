@@ -16,7 +16,9 @@ import java.util.UUID;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.dapfintech.auth.entity.User;
@@ -66,6 +68,7 @@ public class OnboardingServiceImpl implements OnboardingService {
     private final LoanCollectionRepository collectionRepository;
     private final LoanRepaymentScheduleService repaymentScheduleService;
     private final LoanMapper loanMapper;
+    private final PlatformTransactionManager transactionManager;
 
     @Override
     public ByteArrayInputStream generateOnboardingTemplate() {
@@ -162,7 +165,6 @@ public class OnboardingServiceImpl implements OnboardingService {
     }
 
     @Override
-    @Transactional
     public OnboardingSummaryResponse importExcel(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Upload file is empty");
@@ -173,6 +175,8 @@ public class OnboardingServiceImpl implements OnboardingService {
         int totalRows = 0;
         int successCount = 0;
         int failureCount = 0;
+
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
 
         try (InputStream is = file.getInputStream(); Workbook workbook = WorkbookFactory.create(is)) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -187,9 +191,11 @@ public class OnboardingServiceImpl implements OnboardingService {
 
                 try {
                     OnboardSingleLoanRequest req = parseRow(row, r + 1);
-                    Loan createdLoan = processSingleOnboarding(req);
-                    createdLoanCodes.add(createdLoan.getLoanCode());
-                    successCount++;
+                    Loan createdLoan = transactionTemplate.execute(status -> processSingleOnboarding(req));
+                    if (createdLoan != null) {
+                        createdLoanCodes.add(createdLoan.getLoanCode());
+                        successCount++;
+                    }
                 } catch (Exception e) {
                     failureCount++;
                     String msg = String.format("Row %d: %s", r + 1, e.getMessage());
