@@ -88,20 +88,19 @@ public class OnboardingServiceImpl implements OnboardingService {
             headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
 
             String[] headers = {
-                "Customer Name*",
-                "Mobile Number*",
-                "Address",
-                "Market Name",
-                "Collector Mobile",
+                "Phone no*",
+                "Name*",
                 "Loan Type (REGULAR/EMERGENCY)*",
-                "Disbursement Date (DD/MM/YYYY)*",
-                "Principal Amount*",
-                "Interest Type (FLAT / FLAT_DIRECT)",
-                "Interest Rate or Flat Amount*",
-                "Tenure (Days/Weeks/Months - 0 for Emergency)*",
-                "Frequency (EDI/EWI/EMI)*",
-                "Total Collected So Far",
-                "Last Payment Date (DD/MM/YYYY)"
+                "Daily Collection*",
+                "No of Days*",
+                "Total Amount To Be Paid*",
+                "EMI Due Days",
+                "Balance Required Till Date",
+                "Gap Till Date",
+                "Loan Issue Date (DD/MM/YYYY)*",
+                "Loan Close date (DD/MM/YYYY)",
+                "Received Amount",
+                "Bal Amount"
             };
 
             Row headerRow = sheet.createRow(0);
@@ -112,14 +111,11 @@ public class OnboardingServiceImpl implements OnboardingService {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Sample Rows:
-            // 1. Regular Loan (Flat % rate, 100 days EDI)
-            // 2. Regular Loan (Flat Direct Amount, e.g. ₹2000 flat interest, 100 days EDI)
-            // 3. Emergency Loan (Daily Interest 1%, No Tenure (0), EDI)
+            // Realistic sample rows based on client business format
             Object[][] sampleData = {
-                {"Rahul Sharma", "9876543210", "Shop 12, Main Bazar", "Civil Lines", "9123456780", "REGULAR", "15/07/2026", 10000, "FLAT", 20, 100, "EDI", 6400, "09/09/2026"},
-                {"Amit Verma", "9876543211", "House 45, Gandhi Nagar", "Aminabad", "9123456780", "REGULAR", "01/08/2026", 20000, "FLAT_DIRECT", 2000, 100, "EDI", 12000, "08/09/2026"},
-                {"Suresh Kumar", "9876543212", "Shop 8, Vegetable Market", "Chowk", "", "EMERGENCY", "10/08/2026", 5000, "FLAT_DIRECT", 500, 0, "EDI", 1500, "09/09/2026"}
+                {"9876543210", "Rahul Sharma", "REGULAR", 100, 100, 10000, 60, 6000, 0, "15/07/2026", "23/10/2026", 6000, 4000},
+                {"9876543211", "Amit Verma", "REGULAR", 200, 100, 20000, 50, 10000, 2000, "01/08/2026", "09/11/2026", 8000, 12000},
+                {"9876543212", "Suresh Kumar", "EMERGENCY", 50, 0, 5000, 30, 1500, 0, "10/08/2026", "", 1500, 5000}
             };
 
             for (int r = 0; r < sampleData.length; r++) {
@@ -135,22 +131,21 @@ public class OnboardingServiceImpl implements OnboardingService {
                 }
             }
 
-            // Explicit safe column widths (Avoid AWT font metrics on headless Linux)
+            // Explicit column widths
             int[] colWidths = {
-                24 * 256, // Customer Name*
-                18 * 256, // Mobile Number*
-                28 * 256, // Address
-                20 * 256, // Market Name
-                18 * 256, // Collector Mobile
-                30 * 256, // Loan Type (REGULAR/EMERGENCY)*
-                34 * 256, // Disbursement Date (DD/MM/YYYY)*
-                20 * 256, // Principal Amount*
-                32 * 256, // Interest Type (FLAT / FLAT_DIRECT)
-                28 * 256, // Interest Rate or Flat Amount*
-                36 * 256, // Tenure (Days/Weeks/Months - 0 for Emergency)*
-                26 * 256, // Frequency (EDI/EWI/EMI)*
-                24 * 256, // Total Collected So Far
-                32 * 256  // Last Payment Date (DD/MM/YYYY)
+                18 * 256, // Phone no*
+                24 * 256, // Name*
+                32 * 256, // Loan Type (REGULAR/EMERGENCY)*
+                20 * 256, // Daily Collection*
+                16 * 256, // No of Days*
+                26 * 256, // Total Amount To Be Paid*
+                18 * 256, // EMI Due Days
+                26 * 256, // Balance Required Till Date
+                16 * 256, // Gap Till Date
+                30 * 256, // Loan Issue Date (DD/MM/YYYY)*
+                30 * 256, // Loan Close date (DD/MM/YYYY)
+                20 * 256, // Received Amount
+                16 * 256  // Bal Amount
             };
             for (int i = 0; i < colWidths.length; i++) {
                 sheet.setColumnWidth(i, colWidths[i]);
@@ -181,6 +176,8 @@ public class OnboardingServiceImpl implements OnboardingService {
         try (InputStream is = file.getInputStream(); Workbook workbook = WorkbookFactory.create(is)) {
             Sheet sheet = workbook.getSheetAt(0);
             int lastRowNum = sheet.getLastRowNum();
+            Row headerRow = sheet.getRow(0);
+            ColumnMapping mapping = detectColumns(headerRow);
 
             for (int r = 1; r <= lastRowNum; r++) {
                 Row row = sheet.getRow(r);
@@ -190,7 +187,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 totalRows++;
 
                 try {
-                    OnboardSingleLoanRequest req = parseRow(row, r + 1);
+                    OnboardSingleLoanRequest req = parseRow(row, r + 1, mapping);
                     Loan createdLoan = transactionTemplate.execute(status -> processSingleOnboarding(req));
                     if (createdLoan != null) {
                         createdLoanCodes.add(createdLoan.getLoanCode());
@@ -290,16 +287,21 @@ public class OnboardingServiceImpl implements OnboardingService {
         String typePrefix = req.getLoanType() == LoanType.EMERGENCY ? "ELN" : "RLN";
         String custPrefix = "NA";
         if (customer.getFirstName() != null && !customer.getFirstName().trim().isEmpty()) {
-            String cName = customer.getFirstName().trim().toUpperCase();
-            custPrefix = cName.length() >= 2 ? cName.substring(0, 2) : cName;
+            String cName = customer.getFirstName().trim().toUpperCase().replaceAll("[^A-Z]", "");
+            custPrefix = cName.length() >= 2 ? cName.substring(0, 2) : (cName.length() == 1 ? cName + "X" : "NA");
         }
         String marketPrefix = "NA";
         if (market != null && market.getMarketName() != null && !market.getMarketName().trim().isEmpty()) {
-            String mName = market.getMarketName().trim().toUpperCase();
-            marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
+            String mName = market.getMarketName().trim().toUpperCase().replaceAll("[^A-Z]", "");
+            marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : (mName.length() == 1 ? mName + "X" : "NA");
         }
         long customerLoanCount = loanRepository.countByCustomerId(customer.getId());
         String loanCode = String.format("%s-%s-%s-%d", typePrefix, custPrefix, marketPrefix, customerLoanCount + 1);
+
+        int codeSuffix = 1;
+        while (loanRepository.existsByLoanCode(loanCode)) {
+            loanCode = String.format("%s-%s-%s-%d-%d", typePrefix, custPrefix, marketPrefix, customerLoanCount + 1, codeSuffix++);
+        }
 
         LocalDate disDate = req.getDisbursementDate() != null ? req.getDisbursementDate() : LocalDate.now();
 
@@ -319,7 +321,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         }
 
         boolean isEmergency = req.getLoanType() == LoanType.EMERGENCY;
-        InterestType intType = req.getInterestType() != null ? req.getInterestType() : (isEmergency ? InterestType.FLAT_DIRECT : InterestType.FLAT_DIRECT);
+        InterestType intType = req.getInterestType() != null ? req.getInterestType() : InterestType.FLAT_DIRECT;
         int loanTenure = isEmergency ? 0 : (req.getTenure() != null ? req.getTenure() : 0);
         RepaymentFrequency freq = isEmergency ? RepaymentFrequency.EDI : (req.getRepaymentFrequency() != null ? req.getRepaymentFrequency() : RepaymentFrequency.EDI);
 
@@ -352,46 +354,9 @@ public class OnboardingServiceImpl implements OnboardingService {
         if (isEmergency) {
             BigDecimal principal = savedLoan.getApprovedAmount();
             List<LoanRepaymentSchedule> emergencySchedules = new ArrayList<>();
+            BigDecimal dailyInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
 
-            if (intType == InterestType.FLAT_DIRECT) {
-                // Emergency Loan with Flat Amount
-                BigDecimal flatInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
-
-                // Schedule 1: Flat Interest (due on disbursement date)
-                if (flatInterest.compareTo(BigDecimal.ZERO) > 0) {
-                    emergencySchedules.add(LoanRepaymentSchedule.builder()
-                            .loan(savedLoan)
-                            .installmentNumber(1)
-                            .dueDate(disDate)
-                            .principalAmount(BigDecimal.ZERO)
-                            .interestAmount(flatInterest)
-                            .installmentAmount(flatInterest)
-                            .dueAmount(flatInterest)
-                            .paidAmount(BigDecimal.ZERO)
-                            .outstandingAmount(flatInterest)
-                            .repaymentStatus(RepaymentStatus.PENDING)
-                            .build());
-                }
-
-                // Schedule 2: Principal (repayable on closure)
-                emergencySchedules.add(LoanRepaymentSchedule.builder()
-                        .loan(savedLoan)
-                        .installmentNumber(emergencySchedules.size() + 1)
-                        .dueDate(LocalDate.now())
-                        .principalAmount(principal)
-                        .interestAmount(BigDecimal.ZERO)
-                        .installmentAmount(principal)
-                        .dueAmount(principal)
-                        .paidAmount(BigDecimal.ZERO)
-                        .outstandingAmount(principal)
-                        .repaymentStatus(RepaymentStatus.PENDING)
-                        .build());
-            } else {
-                // Percentage daily interest model
-                BigDecimal dailyInterest = principal
-                        .multiply(savedLoan.getInterestRate())
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
+            if (dailyInterest.compareTo(BigDecimal.ZERO) > 0) {
                 LocalDate currDate = disDate;
                 LocalDate today = LocalDate.now();
                 int instNum = 1;
@@ -414,8 +379,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 }
 
                 if (emergencySchedules.isEmpty()) {
-                    // If disbursement date is today or future, at least 1 schedule item
-                    LoanRepaymentSchedule sched = LoanRepaymentSchedule.builder()
+                    emergencySchedules.add(LoanRepaymentSchedule.builder()
                             .loan(savedLoan)
                             .installmentNumber(1)
                             .dueDate(disDate)
@@ -426,9 +390,35 @@ public class OnboardingServiceImpl implements OnboardingService {
                             .paidAmount(BigDecimal.ZERO)
                             .outstandingAmount(dailyInterest)
                             .repaymentStatus(RepaymentStatus.PENDING)
-                            .build();
-                    emergencySchedules.add(sched);
+                            .build());
                 }
+
+                // Principal repayment schedule due on closure
+                emergencySchedules.add(LoanRepaymentSchedule.builder()
+                        .loan(savedLoan)
+                        .installmentNumber(emergencySchedules.size() + 1)
+                        .dueDate(LocalDate.now())
+                        .principalAmount(principal)
+                        .interestAmount(BigDecimal.ZERO)
+                        .installmentAmount(principal)
+                        .dueAmount(principal)
+                        .paidAmount(BigDecimal.ZERO)
+                        .outstandingAmount(principal)
+                        .repaymentStatus(RepaymentStatus.PENDING)
+                        .build());
+            } else {
+                emergencySchedules.add(LoanRepaymentSchedule.builder()
+                        .loan(savedLoan)
+                        .installmentNumber(1)
+                        .dueDate(LocalDate.now())
+                        .principalAmount(principal)
+                        .interestAmount(BigDecimal.ZERO)
+                        .installmentAmount(principal)
+                        .dueAmount(principal)
+                        .paidAmount(BigDecimal.ZERO)
+                        .outstandingAmount(principal)
+                        .repaymentStatus(RepaymentStatus.PENDING)
+                        .build());
             }
 
             scheduleRepository.saveAll(emergencySchedules);
@@ -535,110 +525,324 @@ public class OnboardingServiceImpl implements OnboardingService {
         return String.format("CUST-%s-%d", marketPrefix, count + 1);
     }
 
-    private OnboardSingleLoanRequest parseRow(Row row, int rowNum) {
-        String custName = getCellString(row.getCell(0));
+    private static class ColumnMapping {
+        int phoneCol = -1;
+        int nameCol = -1;
+        int loanTypeCol = -1;
+        int dailyCollectionCol = -1;
+        int tenureCol = -1;
+        int totalAmountCol = -1;
+        int emiDueDaysCol = -1;
+        int balanceRequiredCol = -1;
+        int gapCol = -1;
+        int issueDateCol = -1;
+        int closeDateCol = -1;
+        int receivedAmountCol = -1;
+        int balanceAmountCol = -1;
+
+        // Legacy template columns
+        int marketCol = -1;
+        int collectorCol = -1;
+        int addressCol = -1;
+        int principalCol = -1;
+        int interestRateCol = -1;
+        int interestTypeCol = -1;
+        int frequencyCol = -1;
+        int disbursedCol = -1;
+        boolean isLegacyTemplate = false;
+    }
+
+    private ColumnMapping detectColumns(Row headerRow) {
+        ColumnMapping m = new ColumnMapping();
+        if (headerRow == null) {
+            m.phoneCol = 0;
+            m.nameCol = 1;
+            m.loanTypeCol = 2;
+            m.dailyCollectionCol = 3;
+            m.tenureCol = 4;
+            m.totalAmountCol = 5;
+            m.emiDueDaysCol = 6;
+            m.balanceRequiredCol = 7;
+            m.gapCol = 8;
+            m.issueDateCol = 9;
+            m.closeDateCol = 10;
+            m.receivedAmountCol = 11;
+            m.balanceAmountCol = 12;
+            return m;
+        }
+
+        int lastCell = headerRow.getLastCellNum();
+        for (int c = 0; c < lastCell; c++) {
+            Cell cell = headerRow.getCell(c);
+            String raw = getCellString(cell);
+            if (raw == null || raw.trim().isEmpty()) continue;
+            String h = raw.toLowerCase().replaceAll("[^a-z0-9]", "");
+
+            if (h.contains("phone") || h.contains("mobile") || h.contains("contact") || h.equals("loanno") || h.equals("loannumber")) {
+                if (m.phoneCol == -1) m.phoneCol = c;
+            } else if (h.equals("name") || h.equals("customername") || h.equals("clientname") || h.contains("borrower")) {
+                m.nameCol = c;
+            } else if (h.equals("loantype") || h.equals("type")) {
+                m.loanTypeCol = c;
+            } else if (h.contains("daily") || h.equals("dailycollection") || h.equals("edi") || h.contains("installment")) {
+                m.dailyCollectionCol = c;
+            } else if (h.contains("noofdays") || h.equals("days") || h.equals("tenure") || h.contains("duration")) {
+                m.tenureCol = c;
+            } else if (h.contains("totalamount") || h.contains("tobepaid") || h.equals("totalpayable") || h.equals("total")) {
+                m.totalAmountCol = c;
+            } else if (h.contains("emidue") || h.equals("duedays")) {
+                m.emiDueDaysCol = c;
+            } else if (h.contains("balancerequired") || h.contains("requiredtilldate") || h.equals("required")) {
+                m.balanceRequiredCol = c;
+            } else if (h.contains("gap")) {
+                m.gapCol = c;
+            } else if (h.contains("issue") || h.contains("disburse") || h.equals("loanissuedate") || h.equals("startdate")) {
+                m.issueDateCol = c;
+            } else if (h.contains("close") || h.contains("maturity") || h.equals("loanclosedate") || h.equals("enddate")) {
+                m.closeDateCol = c;
+            } else if (h.contains("received") || h.contains("collected") || h.equals("paidamount")) {
+                m.receivedAmountCol = c;
+            } else if (h.contains("balamount") || h.contains("balanceamount") || (h.startsWith("bal") && !h.contains("required")) || h.contains("outstanding")) {
+                m.balanceAmountCol = c;
+            } else if (h.contains("market")) {
+                m.marketCol = c;
+            } else if (h.contains("collector")) {
+                m.collectorCol = c;
+            } else if (h.contains("address")) {
+                m.addressCol = c;
+            } else if (h.contains("principal")) {
+                m.principalCol = c;
+            } else if (h.contains("interestrate")) {
+                m.interestRateCol = c;
+            } else if (h.contains("interesttype")) {
+                m.interestTypeCol = c;
+            } else if (h.contains("frequency")) {
+                m.frequencyCol = c;
+            } else if (h.contains("disbursed")) {
+                m.disbursedCol = c;
+            }
+        }
+
+        // Check if legacy template
+        if (m.principalCol != -1 && m.marketCol != -1) {
+            m.isLegacyTemplate = true;
+            return m;
+        }
+
+        // Positional fallbacks for missing columns in client format
+        if (m.phoneCol == -1) m.phoneCol = 0;
+        if (m.nameCol == -1) m.nameCol = 1;
+
+        if (m.loanTypeCol == -1 && m.dailyCollectionCol == -1) {
+            // Check row count / layout:
+            if (lastCell >= 13) {
+                m.loanTypeCol = 2;
+                m.dailyCollectionCol = 3;
+                if (m.tenureCol == -1) m.tenureCol = 4;
+                if (m.totalAmountCol == -1) m.totalAmountCol = 5;
+                if (m.emiDueDaysCol == -1) m.emiDueDaysCol = 6;
+                if (m.balanceRequiredCol == -1) m.balanceRequiredCol = 7;
+                if (m.gapCol == -1) m.gapCol = 8;
+                if (m.issueDateCol == -1) m.issueDateCol = 9;
+                if (m.closeDateCol == -1) m.closeDateCol = 10;
+                if (m.receivedAmountCol == -1) m.receivedAmountCol = 11;
+                if (m.balanceAmountCol == -1) m.balanceAmountCol = 12;
+            } else {
+                // 12-column layout without Loan Type
+                m.dailyCollectionCol = 2;
+                if (m.tenureCol == -1) m.tenureCol = 3;
+                if (m.totalAmountCol == -1) m.totalAmountCol = 4;
+                if (m.emiDueDaysCol == -1) m.emiDueDaysCol = 5;
+                if (m.balanceRequiredCol == -1) m.balanceRequiredCol = 6;
+                if (m.gapCol == -1) m.gapCol = 7;
+                if (m.issueDateCol == -1) m.issueDateCol = 8;
+                if (m.closeDateCol == -1) m.closeDateCol = 9;
+                if (m.receivedAmountCol == -1) m.receivedAmountCol = 10;
+                if (m.balanceAmountCol == -1) m.balanceAmountCol = 11;
+            }
+        } else {
+            if (m.dailyCollectionCol == -1) m.dailyCollectionCol = m.loanTypeCol != -1 ? m.loanTypeCol + 1 : 2;
+            if (m.tenureCol == -1) m.tenureCol = m.dailyCollectionCol + 1;
+            if (m.totalAmountCol == -1) m.totalAmountCol = m.tenureCol + 1;
+            if (m.issueDateCol == -1) m.issueDateCol = m.totalAmountCol + 4;
+            if (m.receivedAmountCol == -1) m.receivedAmountCol = m.issueDateCol + 2;
+        }
+
+        return m;
+    }
+
+    private OnboardSingleLoanRequest parseRow(Row row, int rowNum, ColumnMapping m) {
+        if (m.isLegacyTemplate) {
+            return parseLegacyRow(row, rowNum, m);
+        }
+
+        String custName = m.nameCol != -1 ? getCellString(row.getCell(m.nameCol)) : null;
         if (custName == null || custName.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer Name is required");
         }
 
-        String mobile = getCellString(row.getCell(1));
-        if (mobile == null || mobile.trim().isEmpty()) {
+        String phoneRaw = m.phoneCol != -1 ? getCellString(row.getCell(m.phoneCol)) : null;
+        String mobile = cleanMobileNumber(phoneRaw);
+        if (mobile.isEmpty()) {
+            throw new IllegalArgumentException("Phone number is required");
+        }
+
+        LoanType loanType = LoanType.REGULAR;
+        if (m.loanTypeCol != -1) {
+            String ltStr = getCellString(row.getCell(m.loanTypeCol));
+            if (ltStr != null) {
+                String lt = ltStr.trim().toUpperCase();
+                if (lt.contains("ELN") || lt.contains("EMERGENCY")) {
+                    loanType = LoanType.EMERGENCY;
+                }
+            }
+        }
+
+        BigDecimal dailyCollection = m.dailyCollectionCol != -1 ? getCellBigDecimal(row.getCell(m.dailyCollectionCol)) : null;
+        Integer tenure = m.tenureCol != -1 ? getCellInteger(row.getCell(m.tenureCol)) : null;
+        BigDecimal totalAmount = m.totalAmountCol != -1 ? getCellBigDecimal(row.getCell(m.totalAmountCol)) : null;
+
+        // Auto-calculate missing math parameters
+        if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            if (dailyCollection != null && tenure != null && tenure > 0) {
+                totalAmount = dailyCollection.multiply(BigDecimal.valueOf(tenure));
+            } else if (dailyCollection != null && dailyCollection.compareTo(BigDecimal.ZERO) > 0) {
+                totalAmount = dailyCollection.multiply(BigDecimal.valueOf(100));
+            } else {
+                totalAmount = BigDecimal.valueOf(10000);
+            }
+        }
+
+        if (loanType == LoanType.EMERGENCY) {
+            tenure = 0;
+        } else {
+            if (tenure == null || tenure <= 0) {
+                if (dailyCollection != null && dailyCollection.compareTo(BigDecimal.ZERO) > 0) {
+                    tenure = totalAmount.divide(dailyCollection, 0, RoundingMode.HALF_UP).intValue();
+                } else {
+                    tenure = 100;
+                }
+            }
+        }
+
+        if (dailyCollection == null || dailyCollection.compareTo(BigDecimal.ZERO) <= 0) {
+            if (tenure != null && tenure > 0) {
+                dailyCollection = totalAmount.divide(BigDecimal.valueOf(tenure), 2, RoundingMode.HALF_UP);
+            } else {
+                dailyCollection = BigDecimal.ZERO;
+            }
+        }
+
+        LocalDate disDate = m.issueDateCol != -1 ? parseDate(row.getCell(m.issueDateCol)) : null;
+        if (disDate == null) {
+            disDate = LocalDate.now();
+        }
+
+        BigDecimal received = m.receivedAmountCol != -1 ? getCellBigDecimal(row.getCell(m.receivedAmountCol)) : BigDecimal.ZERO;
+        if (received == null) {
+            received = BigDecimal.ZERO;
+        }
+
+        LocalDate lastPaymentDate = null;
+        if (m.closeDateCol != -1 && received.compareTo(totalAmount) >= 0) {
+            lastPaymentDate = parseDate(row.getCell(m.closeDateCol));
+        }
+        if (lastPaymentDate == null && received.compareTo(BigDecimal.ZERO) > 0) {
+            if (dailyCollection.compareTo(BigDecimal.ZERO) > 0) {
+                int paidDays = received.divide(dailyCollection, 0, RoundingMode.DOWN).intValue();
+                lastPaymentDate = disDate.plusDays(Math.max(0, paidDays - 1));
+            } else {
+                lastPaymentDate = disDate;
+            }
+        }
+
+        String address = m.addressCol != -1 ? getCellString(row.getCell(m.addressCol)) : "";
+        String marketName = m.marketCol != -1 ? getCellString(row.getCell(m.marketCol)) : "";
+        String collectorMobile = m.collectorCol != -1 ? cleanMobileNumber(getCellString(row.getCell(m.collectorCol))) : "";
+
+        BigDecimal interestRate = loanType == LoanType.EMERGENCY ? dailyCollection : BigDecimal.ZERO;
+
+        return OnboardSingleLoanRequest.builder()
+                .customerName(custName)
+                .mobileNumber(mobile)
+                .address(address)
+                .marketName(marketName)
+                .collectorMobile(collectorMobile)
+                .loanType(loanType)
+                .disbursementDate(disDate)
+                .principalAmount(totalAmount)
+                .disbursedAmount(totalAmount)
+                .interestRate(interestRate)
+                .interestType(InterestType.FLAT_DIRECT)
+                .tenure(tenure)
+                .repaymentFrequency(RepaymentFrequency.EDI)
+                .totalCollectedSoFar(received)
+                .lastPaymentDate(lastPaymentDate)
+                .build();
+    }
+
+    private OnboardSingleLoanRequest parseLegacyRow(Row row, int rowNum, ColumnMapping m) {
+        String custName = getCellString(row.getCell(m.nameCol));
+        if (custName == null || custName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer Name is required");
+        }
+
+        String mobile = cleanMobileNumber(getCellString(row.getCell(m.phoneCol)));
+        if (mobile.isEmpty()) {
             throw new IllegalArgumentException("Mobile Number is required");
         }
-        mobile = cleanMobileNumber(mobile);
 
-        String address = getCellString(row.getCell(2));
-        String marketName = getCellString(row.getCell(3));
-        String collectorMobile = cleanMobileNumber(getCellString(row.getCell(4)));
+        String address = m.addressCol != -1 ? getCellString(row.getCell(m.addressCol)) : "";
+        String marketName = m.marketCol != -1 ? getCellString(row.getCell(m.marketCol)) : "";
+        String collectorMobile = m.collectorCol != -1 ? cleanMobileNumber(getCellString(row.getCell(m.collectorCol))) : "";
 
-        String loanTypeStr = getCellString(row.getCell(5));
         LoanType loanType = LoanType.REGULAR;
-        if (loanTypeStr != null) {
-            String lt = loanTypeStr.trim().toUpperCase();
-            if (lt.contains("ELN") || lt.contains("EMERGENCY")) {
+        if (m.loanTypeCol != -1) {
+            String ltStr = getCellString(row.getCell(m.loanTypeCol));
+            if (ltStr != null && (ltStr.toUpperCase().contains("ELN") || ltStr.toUpperCase().contains("EMERGENCY"))) {
                 loanType = LoanType.EMERGENCY;
             }
         }
 
-        LocalDate disDate = parseDate(row.getCell(6));
-        if (disDate == null) {
-            throw new IllegalArgumentException("Disbursement Date is invalid or missing");
-        }
+        LocalDate disDate = m.issueDateCol != -1 ? parseDate(row.getCell(m.issueDateCol)) : LocalDate.now();
+        if (disDate == null) disDate = LocalDate.now();
 
-        BigDecimal principal = getCellBigDecimal(row.getCell(7));
+        BigDecimal principal = m.principalCol != -1 ? getCellBigDecimal(row.getCell(m.principalCol)) : BigDecimal.valueOf(10000);
         if (principal == null || principal.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Principal Amount must be greater than 0");
+            principal = BigDecimal.valueOf(10000);
         }
 
-        // Support both 14-column (with Interest Type at col 8) and 13-column layouts
         InterestType intType = InterestType.FLAT;
-        BigDecimal interestRate = BigDecimal.ZERO;
-        Integer tenure = 0;
+        if (m.interestTypeCol != -1) {
+            String itStr = getCellString(row.getCell(m.interestTypeCol));
+            if (itStr != null && itStr.toUpperCase().contains("DIRECT")) {
+                intType = InterestType.FLAT_DIRECT;
+            }
+        }
+
+        BigDecimal interestRate = m.interestRateCol != -1 ? getCellBigDecimal(row.getCell(m.interestRateCol)) : BigDecimal.ZERO;
+        if (interestRate == null) interestRate = BigDecimal.ZERO;
+
+        Integer tenure = m.tenureCol != -1 ? getCellInteger(row.getCell(m.tenureCol)) : 100;
+        if (loanType == LoanType.EMERGENCY) tenure = 0;
+
         RepaymentFrequency freq = RepaymentFrequency.EDI;
-        BigDecimal collected = BigDecimal.ZERO;
-        LocalDate lastPaymentDate = null;
-
-        String col8Str = getCellString(row.getCell(8));
-        boolean hasInterestTypeCol = col8Str != null && (col8Str.toUpperCase().contains("FLAT") || col8Str.toUpperCase().contains("DIRECT"));
-
-        if (hasInterestTypeCol) {
-            if (col8Str.toUpperCase().contains("DIRECT")) {
-                intType = InterestType.FLAT_DIRECT;
-            } else {
-                intType = InterestType.FLAT;
-            }
-            interestRate = getCellBigDecimal(row.getCell(9));
-            tenure = getCellInteger(row.getCell(10));
-            String freqStr = getCellString(row.getCell(11));
-            if (freqStr != null) {
-                String fUpper = freqStr.trim().toUpperCase();
+        if (m.frequencyCol != -1) {
+            String fStr = getCellString(row.getCell(m.frequencyCol));
+            if (fStr != null) {
+                String fUpper = fStr.trim().toUpperCase();
                 if (fUpper.contains("WEEK") || fUpper.equals("EWI")) freq = RepaymentFrequency.EWI;
                 else if (fUpper.contains("MONTH") || fUpper.equals("EMI")) freq = RepaymentFrequency.EMI;
             }
-            collected = getCellBigDecimal(row.getCell(12));
-            lastPaymentDate = parseDate(row.getCell(13));
-        } else {
-            // Legacy 13-column
-            interestRate = getCellBigDecimal(row.getCell(8));
-            tenure = getCellInteger(row.getCell(9));
-            String freqStr = getCellString(row.getCell(10));
-            if (freqStr != null) {
-                String fUpper = freqStr.trim().toUpperCase();
-                if (fUpper.contains("WEEK") || fUpper.equals("EWI")) freq = RepaymentFrequency.EWI;
-                else if (fUpper.contains("MONTH") || fUpper.equals("EMI")) freq = RepaymentFrequency.EMI;
-            }
-            collected = getCellBigDecimal(row.getCell(11));
-            lastPaymentDate = parseDate(row.getCell(12));
         }
 
-        if (interestRate == null) {
-            interestRate = BigDecimal.ZERO;
-        }
+        BigDecimal collected = m.receivedAmountCol != -1 ? getCellBigDecimal(row.getCell(m.receivedAmountCol)) : BigDecimal.ZERO;
+        if (collected == null) collected = BigDecimal.ZERO;
 
-        if (loanType == LoanType.REGULAR) {
-            if (tenure == null || tenure <= 0) {
-                throw new IllegalArgumentException("Tenure must be greater than 0 for regular loans");
-            }
-        } else {
-            tenure = 0;
-            freq = RepaymentFrequency.EDI;
-            if (!hasInterestTypeCol) {
-                intType = InterestType.FLAT_DIRECT;
-            }
-        }
+        LocalDate lastPaymentDate = m.closeDateCol != -1 ? parseDate(row.getCell(m.closeDateCol)) : null;
 
-        if (collected == null) {
-            collected = BigDecimal.ZERO;
-        }
-
-        BigDecimal disbursed = null;
-        int lastCol = hasInterestTypeCol ? 14 : 13;
-        if (row.getLastCellNum() > lastCol) {
-            disbursed = getCellBigDecimal(row.getCell(lastCol));
-        }
-        if (disbursed == null || disbursed.compareTo(BigDecimal.ZERO) <= 0) {
-            disbursed = principal;
-        }
+        BigDecimal disbursed = m.disbursedCol != -1 ? getCellBigDecimal(row.getCell(m.disbursedCol)) : principal;
+        if (disbursed == null || disbursed.compareTo(BigDecimal.ZERO) <= 0) disbursed = principal;
 
         return OnboardSingleLoanRequest.builder()
                 .customerName(custName)
@@ -660,6 +864,7 @@ public class OnboardingServiceImpl implements OnboardingService {
     }
 
     private boolean isRowEmpty(Row row) {
+        if (row == null) return true;
         for (int c = row.getFirstCellNum(); c < row.getLastCellNum(); c++) {
             Cell cell = row.getCell(c);
             if (cell != null && cell.getCellType() != CellType.BLANK) {
@@ -682,11 +887,25 @@ public class OnboardingServiceImpl implements OnboardingService {
             }
             double val = cell.getNumericCellValue();
             if (val == (long) val) {
-                return String.valueOf((long) val);
+                return BigDecimal.valueOf((long) val).toPlainString();
             }
-            return String.valueOf(val);
+            return BigDecimal.valueOf(val).toPlainString();
         } else if (cell.getCellType() == CellType.BOOLEAN) {
             return String.valueOf(cell.getBooleanCellValue());
+        } else if (cell.getCellType() == CellType.FORMULA) {
+            try {
+                return cell.getStringCellValue().trim();
+            } catch (Exception e) {
+                try {
+                    double val = cell.getNumericCellValue();
+                    if (val == (long) val) {
+                        return BigDecimal.valueOf((long) val).toPlainString();
+                    }
+                    return BigDecimal.valueOf(val).toPlainString();
+                } catch (Exception ignored) {
+                    return "";
+                }
+            }
         }
         return null;
     }
@@ -695,9 +914,11 @@ public class OnboardingServiceImpl implements OnboardingService {
         if (cell == null) return null;
         if (cell.getCellType() == CellType.NUMERIC) {
             return BigDecimal.valueOf(cell.getNumericCellValue()).setScale(2, RoundingMode.HALF_UP);
-        } else if (cell.getCellType() == CellType.STRING) {
+        } else if (cell.getCellType() == CellType.STRING || cell.getCellType() == CellType.FORMULA) {
             try {
-                String clean = cell.getStringCellValue().replaceAll("[^0-9.]", "");
+                String clean = getCellString(cell);
+                if (clean == null) return null;
+                clean = clean.replaceAll("[^0-9.]", "");
                 if (clean.isEmpty()) return null;
                 return new BigDecimal(clean).setScale(2, RoundingMode.HALF_UP);
             } catch (Exception e) {
@@ -711,9 +932,11 @@ public class OnboardingServiceImpl implements OnboardingService {
         if (cell == null) return null;
         if (cell.getCellType() == CellType.NUMERIC) {
             return (int) cell.getNumericCellValue();
-        } else if (cell.getCellType() == CellType.STRING) {
+        } else if (cell.getCellType() == CellType.STRING || cell.getCellType() == CellType.FORMULA) {
             try {
-                String clean = cell.getStringCellValue().replaceAll("[^0-9]", "");
+                String clean = getCellString(cell);
+                if (clean == null) return null;
+                clean = clean.replaceAll("[^0-9]", "");
                 if (clean.isEmpty()) return null;
                 return Integer.parseInt(clean);
             } catch (Exception e) {
@@ -725,25 +948,41 @@ public class OnboardingServiceImpl implements OnboardingService {
 
     private LocalDate parseDate(Cell cell) {
         if (cell == null) return null;
-        if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
-            return cell.getLocalDateTimeCellValue().toLocalDate();
+        if (cell.getCellType() == CellType.NUMERIC) {
+            if (DateUtil.isCellDateFormatted(cell)) {
+                return cell.getLocalDateTimeCellValue().toLocalDate();
+            }
+            double num = cell.getNumericCellValue();
+            if (num >= 35000 && num <= 65000) {
+                try {
+                    return DateUtil.getLocalDateTime(num).toLocalDate();
+                } catch (Exception ignored) {}
+            }
         }
         String str = getCellString(cell);
         if (str == null || str.trim().isEmpty()) return null;
-        str = str.trim();
+        str = str.trim().replaceAll("\\s+", "");
 
-        // Try standard formats: DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY
-        String[] patterns = {"dd/MM/yyyy", "yyyy-MM-dd", "dd-MM-yyyy", "d/M/yyyy", "d-M-yyyy"};
+        String[] patterns = {
+            "dd/MM/yyyy", "d/M/yyyy", "dd/M/yyyy", "d/MM/yyyy",
+            "dd-MM-yyyy", "d-M-yyyy", "dd-M-yyyy", "d-MM-yyyy",
+            "yyyy-MM-dd", "yyyy/MM/dd", "dd.MM.yyyy", "d.M.yyyy",
+            "dd/MM/yy", "d/M/yy", "dd-MM-yy", "d-M-yy"
+        };
         for (String p : patterns) {
             try {
                 return LocalDate.parse(str, DateTimeFormatter.ofPattern(p));
-            } catch (DateTimeParseException ignored) {}
+            } catch (Exception ignored) {}
         }
         return null;
     }
 
     private String cleanMobileNumber(String raw) {
         if (raw == null) return "";
+        int dot = raw.indexOf('.');
+        if (dot != -1) {
+            raw = raw.substring(0, dot);
+        }
         String digits = raw.replaceAll("[^0-9]", "");
         if (digits.length() > 10 && digits.startsWith("91")) {
             digits = digits.substring(2);

@@ -25,6 +25,8 @@ public interface LoanRepository
 
     List<Loan> findByLoanTypeAndLoanStatus(LoanType loanType, LoanStatus loanStatus);
 
+    boolean existsByLoanCode(String loanCode);
+
     List<Loan> findByCustomerId(
             UUID customerId
     );
