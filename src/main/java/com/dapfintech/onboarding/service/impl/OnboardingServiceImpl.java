@@ -49,6 +49,8 @@ import com.dapfintech.market.repository.EmployeeMarketAssignmentRepository;
 import com.dapfintech.market.repository.MarketRepository;
 import com.dapfintech.onboarding.dto.request.OnboardSingleLoanRequest;
 import com.dapfintech.onboarding.dto.response.OnboardingSummaryResponse;
+import com.dapfintech.employee.dto.DayBookTransactionRequest;
+import com.dapfintech.employee.service.DayBookService;
 import com.dapfintech.onboarding.service.OnboardingService;
 
 import lombok.RequiredArgsConstructor;
@@ -69,6 +71,7 @@ public class OnboardingServiceImpl implements OnboardingService {
     private final LoanRepaymentScheduleService repaymentScheduleService;
     private final LoanMapper loanMapper;
     private final PlatformTransactionManager transactionManager;
+    private final DayBookService dayBookService;
 
     @Override
     public ByteArrayInputStream generateOnboardingTemplate() {
@@ -507,6 +510,26 @@ public class OnboardingServiceImpl implements OnboardingService {
                     .remarks("Historical collection up to 29 Sep 2026")
                     .build();
             collectionRepository.save(consolidatedCol);
+
+            // Also update the employee's DayBook for 29 Sep so the ledger reflects the historical collection
+            if (collector != null && totalCollected.compareTo(BigDecimal.ZERO) > 0) {
+                try {
+                    DayBookTransactionRequest dbReq = new DayBookTransactionRequest();
+                    dbReq.setType("COLLECTIONS");
+                    dbReq.setAmount(totalCollected);
+                    dbReq.setRemarks("HIST: " + savedLoan.getLoanCode() + " - "
+                            + savedLoan.getCustomer().getFirstName() + " " + savedLoan.getCustomer().getLastName()
+                            + " (up to 29 Sep 2026)");
+                    dayBookService.addTransactionForDate(
+                            collector.getId(),
+                            effectiveCutoff,   // LocalDate: 2026-09-29
+                            dbReq
+                    );
+                } catch (Exception e) {
+                    // Non-fatal: daybook update failure does not block onboarding
+                    log.warn("Could not update daybook for collector {} during onboarding: {}", collector.getId(), e.getMessage());
+                }
+            }
 
             // Check if fully paid off
             if (isEmergency) {
