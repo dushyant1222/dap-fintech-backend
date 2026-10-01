@@ -150,11 +150,15 @@ public class AdminManagementServiceImpl implements AdminManagementService {
 
     private AdminResponse toResponse(User u) {
         boolean isMaster = isMasterAdmin(u);
+        String email = u.getEmail();
+        if (isMaster && (email == null || email.trim().isEmpty() || email.contains("masteradmin") || email.contains("masterdamin"))) {
+            email = "singh.amitjadoun@gmail.com";
+        }
         return AdminResponse.builder()
                 .id(u.getId())
                 .fullName(u.getFullName())
                 .mobileNumber(u.getMobileNumber())
-                .email(u.getEmail())
+                .email(email)
                 .role(isMaster ? "MASTER_ADMIN" : "ADMIN")
                 .status(u.getStatus() != null ? u.getStatus().name() : "ACTIVE")
                 .isMasterAdmin(isMaster)

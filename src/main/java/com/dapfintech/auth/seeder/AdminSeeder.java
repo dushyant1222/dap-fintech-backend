@@ -52,15 +52,29 @@ public class AdminSeeder implements CommandLineRunner {
         Role masterAdminRole = roleRepository.findByRoleName("MASTER_ADMIN")
                 .orElseGet(() -> roleRepository.findByRoleName("ADMIN").orElseThrow());
 
+        final String masterAdminEmail = "singh.amitjadoun@gmail.com";
+
+        // Update all users with role MASTER_ADMIN
+        try {
+            java.util.List<User> masterAdmins = userRepository.findByRoleRoleName("MASTER_ADMIN");
+            for (User ma : masterAdmins) {
+                ma.setEmail(masterAdminEmail);
+                userRepository.save(ma);
+            }
+        } catch (Exception e) {
+            System.err.println("Could not update existing MASTER_ADMIN emails: " + e.getMessage());
+        }
+
         // Check if 9311111335 already exists
         var user9311 = userRepository.findByMobileNumber("9311111335");
         if (user9311.isPresent()) {
             User existing = user9311.get();
             existing.setFullName("Master Admin");
+            existing.setEmail(masterAdminEmail);
             existing.setRole(masterAdminRole);
             existing.setStatus(UserStatus.ACTIVE);
             userRepository.save(existing);
-            System.out.println("Default Master Admin (9311111335) verified as MASTER_ADMIN");
+            System.out.println("Default Master Admin (9311111335) verified as MASTER_ADMIN with email " + masterAdminEmail);
             return;
         }
 
@@ -69,12 +83,13 @@ public class AdminSeeder implements CommandLineRunner {
         if (user9999.isPresent()) {
             User existing = user9999.get();
             existing.setFullName("Master Admin");
+            existing.setEmail(masterAdminEmail);
             existing.setMobileNumber("9311111335");
             existing.setPasswordHash(passwordEncoder.encode("Admin@123"));
             existing.setRole(masterAdminRole);
             existing.setStatus(UserStatus.ACTIVE);
             userRepository.save(existing);
-            System.out.println("Master Admin migrated from 9999999999 to 9311111335 successfully");
+            System.out.println("Master Admin migrated from 9999999999 to 9311111335 with email " + masterAdminEmail);
             return;
         }
 
@@ -82,12 +97,13 @@ public class AdminSeeder implements CommandLineRunner {
         User admin = User.builder()
                 .fullName("Master Admin")
                 .mobileNumber("9311111335")
+                .email(masterAdminEmail)
                 .passwordHash(passwordEncoder.encode("Admin@123"))
                 .role(masterAdminRole)
                 .status(UserStatus.ACTIVE)
                 .build();
 
         userRepository.save(admin);
-        System.out.println("Default Master Admin (9311111335) created");
+        System.out.println("Default Master Admin (9311111335) created with email " + masterAdminEmail);
     }
 }

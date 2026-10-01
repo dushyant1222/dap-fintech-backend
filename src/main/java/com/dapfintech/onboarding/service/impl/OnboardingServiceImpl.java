@@ -93,7 +93,9 @@ public class OnboardingServiceImpl implements OnboardingService {
                 "Loan Type (REGULAR/EMERGENCY)*",
                 "Daily Collection*",
                 "No of Days*",
-                "Total Amount To Be Paid*",
+                "Total Loan amount*",
+                "Disbursed amount*",
+                "Total Amount To Be Paid",
                 "EMI Due Days",
                 "Balance Required Till Date",
                 "Gap Till Date",
@@ -113,9 +115,9 @@ public class OnboardingServiceImpl implements OnboardingService {
 
             // Realistic sample rows based on client business format
             Object[][] sampleData = {
-                {"9876543210", "Rahul Sharma", "REGULAR", 100, 100, 10000, 60, 6000, 0, "15/07/2026", "23/10/2026", 6000, 4000},
-                {"9876543211", "Amit Verma", "REGULAR", 200, 100, 20000, 50, 10000, 2000, "01/08/2026", "09/11/2026", 8000, 12000},
-                {"9876543212", "Suresh Kumar", "EMERGENCY", 50, 0, 5000, 30, 1500, 0, "10/08/2026", "", 1500, 5000}
+                {"9876543210", "Rahul Sharma", "REGULAR", 100, 100, 10000, 8500, 10000, 60, 6000, 0, "15/07/2026", "23/10/2026", 6000, 4000},
+                {"9876543211", "Amit Verma", "REGULAR", 200, 100, 20000, 17000, 20000, 50, 10000, 2000, "01/08/2026", "09/11/2026", 8000, 12000},
+                {"9876543212", "Suresh Kumar", "EMERGENCY", 50, 0, 5000, 5000, 5000, 30, 1500, 0, "10/08/2026", "", 1500, 5000}
             };
 
             for (int r = 0; r < sampleData.length; r++) {
@@ -138,7 +140,9 @@ public class OnboardingServiceImpl implements OnboardingService {
                 32 * 256, // Loan Type (REGULAR/EMERGENCY)*
                 20 * 256, // Daily Collection*
                 16 * 256, // No of Days*
-                26 * 256, // Total Amount To Be Paid*
+                24 * 256, // Total Loan amount*
+                22 * 256, // Disbursed amount*
+                26 * 256, // Total Amount To Be Paid
                 18 * 256, // EMI Due Days
                 26 * 256, // Balance Required Till Date
                 16 * 256, // Gap Till Date
@@ -531,6 +535,8 @@ public class OnboardingServiceImpl implements OnboardingService {
         int loanTypeCol = -1;
         int dailyCollectionCol = -1;
         int tenureCol = -1;
+        int totalLoanAmountCol = -1;
+        int disbursedAmountCol = -1;
         int totalAmountCol = -1;
         int emiDueDaysCol = -1;
         int balanceRequiredCol = -1;
@@ -560,14 +566,16 @@ public class OnboardingServiceImpl implements OnboardingService {
             m.loanTypeCol = 2;
             m.dailyCollectionCol = 3;
             m.tenureCol = 4;
-            m.totalAmountCol = 5;
-            m.emiDueDaysCol = 6;
-            m.balanceRequiredCol = 7;
-            m.gapCol = 8;
-            m.issueDateCol = 9;
-            m.closeDateCol = 10;
-            m.receivedAmountCol = 11;
-            m.balanceAmountCol = 12;
+            m.totalLoanAmountCol = 5;
+            m.disbursedAmountCol = 6;
+            m.totalAmountCol = 7;
+            m.emiDueDaysCol = 8;
+            m.balanceRequiredCol = 9;
+            m.gapCol = 10;
+            m.issueDateCol = 11;
+            m.closeDateCol = 12;
+            m.receivedAmountCol = 13;
+            m.balanceAmountCol = 14;
             return m;
         }
 
@@ -588,6 +596,13 @@ public class OnboardingServiceImpl implements OnboardingService {
                 m.dailyCollectionCol = c;
             } else if (h.contains("noofdays") || h.equals("days") || h.equals("tenure") || h.contains("duration")) {
                 m.tenureCol = c;
+            } else if (h.contains("totalloanamount") || h.contains("totalloan")) {
+                m.totalLoanAmountCol = c;
+            } else if (h.contains("disbursedate") || (h.contains("disburse") && h.contains("date")) || h.contains("issue") || h.equals("loanissuedate") || h.equals("startdate")) {
+                m.issueDateCol = c;
+            } else if (h.contains("disbursed") || h.contains("disburse")) {
+                m.disbursedAmountCol = c;
+                m.disbursedCol = c;
             } else if (h.contains("totalamount") || h.contains("tobepaid") || h.equals("totalpayable") || h.equals("total")) {
                 m.totalAmountCol = c;
             } else if (h.contains("emidue") || h.equals("duedays")) {
@@ -596,8 +611,6 @@ public class OnboardingServiceImpl implements OnboardingService {
                 m.balanceRequiredCol = c;
             } else if (h.contains("gap")) {
                 m.gapCol = c;
-            } else if (h.contains("issue") || h.contains("disburse") || h.equals("loanissuedate") || h.equals("startdate")) {
-                m.issueDateCol = c;
             } else if (h.contains("close") || h.contains("maturity") || h.equals("loanclosedate") || h.equals("enddate")) {
                 m.closeDateCol = c;
             } else if (h.contains("received") || h.contains("collected") || h.equals("paidamount")) {
@@ -618,8 +631,6 @@ public class OnboardingServiceImpl implements OnboardingService {
                 m.interestTypeCol = c;
             } else if (h.contains("frequency")) {
                 m.frequencyCol = c;
-            } else if (h.contains("disbursed")) {
-                m.disbursedCol = c;
             }
         }
 
@@ -635,7 +646,34 @@ public class OnboardingServiceImpl implements OnboardingService {
 
         if (m.loanTypeCol == -1 && m.dailyCollectionCol == -1) {
             // Check row count / layout:
-            if (lastCell >= 13) {
+            if (lastCell >= 15) {
+                m.loanTypeCol = 2;
+                m.dailyCollectionCol = 3;
+                if (m.tenureCol == -1) m.tenureCol = 4;
+                if (m.totalLoanAmountCol == -1) m.totalLoanAmountCol = 5;
+                if (m.disbursedAmountCol == -1) m.disbursedAmountCol = 6;
+                if (m.totalAmountCol == -1) m.totalAmountCol = 7;
+                if (m.emiDueDaysCol == -1) m.emiDueDaysCol = 8;
+                if (m.balanceRequiredCol == -1) m.balanceRequiredCol = 9;
+                if (m.gapCol == -1) m.gapCol = 10;
+                if (m.issueDateCol == -1) m.issueDateCol = 11;
+                if (m.closeDateCol == -1) m.closeDateCol = 12;
+                if (m.receivedAmountCol == -1) m.receivedAmountCol = 13;
+                if (m.balanceAmountCol == -1) m.balanceAmountCol = 14;
+            } else if (lastCell == 14) {
+                m.loanTypeCol = 2;
+                m.dailyCollectionCol = 3;
+                if (m.tenureCol == -1) m.tenureCol = 4;
+                if (m.totalLoanAmountCol == -1) m.totalLoanAmountCol = 5;
+                if (m.disbursedAmountCol == -1) m.disbursedAmountCol = 6;
+                if (m.emiDueDaysCol == -1) m.emiDueDaysCol = 7;
+                if (m.balanceRequiredCol == -1) m.balanceRequiredCol = 8;
+                if (m.gapCol == -1) m.gapCol = 9;
+                if (m.issueDateCol == -1) m.issueDateCol = 10;
+                if (m.closeDateCol == -1) m.closeDateCol = 11;
+                if (m.receivedAmountCol == -1) m.receivedAmountCol = 12;
+                if (m.balanceAmountCol == -1) m.balanceAmountCol = 13;
+            } else if (lastCell == 13) {
                 m.loanTypeCol = 2;
                 m.dailyCollectionCol = 3;
                 if (m.tenureCol == -1) m.tenureCol = 4;
@@ -663,8 +701,8 @@ public class OnboardingServiceImpl implements OnboardingService {
         } else {
             if (m.dailyCollectionCol == -1) m.dailyCollectionCol = m.loanTypeCol != -1 ? m.loanTypeCol + 1 : 2;
             if (m.tenureCol == -1) m.tenureCol = m.dailyCollectionCol + 1;
-            if (m.totalAmountCol == -1) m.totalAmountCol = m.tenureCol + 1;
-            if (m.issueDateCol == -1) m.issueDateCol = m.totalAmountCol + 4;
+            if (m.totalLoanAmountCol == -1 && m.totalAmountCol == -1) m.totalAmountCol = m.tenureCol + 1;
+            if (m.issueDateCol == -1) m.issueDateCol = m.tenureCol + 5;
             if (m.receivedAmountCol == -1) m.receivedAmountCol = m.issueDateCol + 2;
         }
 
@@ -700,7 +738,11 @@ public class OnboardingServiceImpl implements OnboardingService {
 
         BigDecimal dailyCollection = m.dailyCollectionCol != -1 ? getCellBigDecimal(row.getCell(m.dailyCollectionCol)) : null;
         Integer tenure = m.tenureCol != -1 ? getCellInteger(row.getCell(m.tenureCol)) : null;
-        BigDecimal totalAmount = m.totalAmountCol != -1 ? getCellBigDecimal(row.getCell(m.totalAmountCol)) : null;
+        BigDecimal totalLoanAmount = m.totalLoanAmountCol != -1 ? getCellBigDecimal(row.getCell(m.totalLoanAmountCol)) : null;
+        BigDecimal disbursedAmount = m.disbursedAmountCol != -1 ? getCellBigDecimal(row.getCell(m.disbursedAmountCol)) : null;
+        BigDecimal totalAmountColVal = m.totalAmountCol != -1 ? getCellBigDecimal(row.getCell(m.totalAmountCol)) : null;
+
+        BigDecimal totalAmount = totalLoanAmount != null ? totalLoanAmount : totalAmountColVal;
 
         // Auto-calculate missing math parameters
         if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -711,6 +753,10 @@ public class OnboardingServiceImpl implements OnboardingService {
             } else {
                 totalAmount = BigDecimal.valueOf(10000);
             }
+        }
+
+        if (disbursedAmount == null || disbursedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            disbursedAmount = totalAmount;
         }
 
         if (loanType == LoanType.EMERGENCY) {
@@ -771,7 +817,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 .loanType(loanType)
                 .disbursementDate(disDate)
                 .principalAmount(totalAmount)
-                .disbursedAmount(totalAmount)
+                .disbursedAmount(disbursedAmount)
                 .interestRate(interestRate)
                 .interestType(InterestType.FLAT_DIRECT)
                 .tenure(tenure)

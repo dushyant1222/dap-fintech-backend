@@ -31,6 +31,24 @@ public class DataMigrationRunner implements CommandLineRunner {
     public void run(String... args) throws Exception {
         log.info("Starting Data Migration and Permission Seeding...");
 
+        // Ensure Master Admin email is updated to singh.amitjadoun@gmail.com
+        try {
+            final String masterEmail = "singh.amitjadoun@gmail.com";
+            List<User> masterAdmins = userRepository.findByRoleRoleName("MASTER_ADMIN");
+            for (User ma : masterAdmins) {
+                ma.setEmail(masterEmail);
+                userRepository.save(ma);
+                log.info("Updated MASTER_ADMIN {} email to {}", ma.getFullName(), masterEmail);
+            }
+            userRepository.findByMobileNumber("9311111335").ifPresent(u -> {
+                u.setEmail(masterEmail);
+                userRepository.save(u);
+                log.info("Updated user 9311111335 email to {}", masterEmail);
+            });
+        } catch (Exception e) {
+            log.warn("Could not auto-migrate master admin email: {}", e.getMessage());
+        }
+
         // Seed Standard Permissions if missing
         String[][] standardPermissions = {
             {"DASHBOARD", "Dashboard", "Access Employee Dashboard overview and metrics"},
