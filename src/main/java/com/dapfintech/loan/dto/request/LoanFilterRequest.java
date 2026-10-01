@@ -7,9 +7,15 @@ import java.util.UUID;
 import com.dapfintech.loan.enums.LoanStatus;
 import com.dapfintech.loan.enums.LoanType;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LoanFilterRequest {
 
     private String keyword;

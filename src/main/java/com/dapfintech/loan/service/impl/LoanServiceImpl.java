@@ -439,15 +439,10 @@ public class LoanServiceImpl
     }
     @Override
     public Page<LoanResponse> searchLoans(
-
             String keyword,
-
             int page,
-
             int size
-
     ) {
-
         Authentication authentication =
                 SecurityContextHolder
                         .getContext()
@@ -467,29 +462,29 @@ public class LoanServiceImpl
                                 )
                         );
 
+        PageRequest pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by(
+                                Sort.Direction.DESC,
+                                "applicationDate"
+                        )
+                );
+
         if (user.isAdmin()) {
+            LoanFilterRequest filter = LoanFilterRequest.builder()
+                    .keyword(keyword)
+                    .build();
 
             return loanRepository
-
-                    .findByCustomerFirstNameContainingIgnoreCaseOrCustomerLastNameContainingIgnoreCaseOrCustomerMobileNumberContaining(
-
-                            keyword,
-
-                            keyword,
-
-                            keyword,
-
-                            PageRequest.of(
-                                    page,
-                                    size
-                            )
-
+                    .findAll(
+                            LoanSpecification.withFilters(filter),
+                            pageable
                     )
-
                     .map(
                             loanMapper::toResponse
                     );
-
         }
 
         EmployeeMarketAssignment assignment =
@@ -503,33 +498,19 @@ public class LoanServiceImpl
                                 )
                         );
 
+        LoanFilterRequest filter = LoanFilterRequest.builder()
+                .keyword(keyword)
+                .marketId(assignment.getMarket().getId())
+                .build();
+
         return loanRepository
-
-                .findByCustomerMarketIdAndCustomerFirstNameContainingIgnoreCaseOrCustomerMarketIdAndCustomerLastNameContainingIgnoreCaseOrCustomerMarketIdAndCustomerMobileNumberContaining(
-
-                        assignment.getMarket().getId(),
-
-                        keyword,
-
-                        assignment.getMarket().getId(),
-
-                        keyword,
-
-                        assignment.getMarket().getId(),
-
-                        keyword,
-
-                        PageRequest.of(
-                                page,
-                                size
-                        )
-
+                .findAll(
+                        LoanSpecification.withFilters(filter),
+                        pageable
                 )
-
                 .map(
                         loanMapper::toResponse
                 );
-
     }
     
     
@@ -1139,31 +1120,6 @@ public class LoanServiceImpl
                                 .repaymentStatus(RepaymentStatus.PENDING)
                                 .build());
                     }
-                    newSchedules.add(LoanRepaymentSchedule.builder()
-                            .loan(updatedLoan)
-                            .installmentNumber(newSchedules.size() + 1)
-                            .dueDate(today)
-                            .principalAmount(principal)
-                            .interestAmount(BigDecimal.ZERO)
-                            .installmentAmount(principal)
-                            .dueAmount(principal)
-                            .paidAmount(BigDecimal.ZERO)
-                            .outstandingAmount(principal)
-                            .repaymentStatus(RepaymentStatus.PENDING)
-                            .build());
-                } else {
-                    newSchedules.add(LoanRepaymentSchedule.builder()
-                            .loan(updatedLoan)
-                            .installmentNumber(1)
-                            .dueDate(today)
-                            .principalAmount(principal)
-                            .interestAmount(BigDecimal.ZERO)
-                            .installmentAmount(principal)
-                            .dueAmount(principal)
-                            .paidAmount(BigDecimal.ZERO)
-                            .outstandingAmount(principal)
-                            .repaymentStatus(RepaymentStatus.PENDING)
-                            .build());
                 }
                 repaymentScheduleRepository.saveAll(newSchedules);
                 repaymentScheduleRepository.flush();
@@ -1349,6 +1305,32 @@ public class LoanServiceImpl
 
         BigDecimal totalCollected = collectionRepository.getSumCollectedByLoan(loanId);
         if (totalCollected == null) totalCollected = BigDecimal.ZERO;
+
+        if (loan.getLoanType() == LoanType.EMERGENCY) {
+            BigDecimal principal = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount()
+                    : (loan.getApprovedAmount() != null ? loan.getApprovedAmount() : loan.getLoanAmount());
+            if (principal == null) principal = BigDecimal.ZERO;
+
+            LocalDate today = LocalDate.now();
+            List<LoanRepaymentSchedule> schedules = repaymentScheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loanId);
+            BigDecimal unpaidDailyFeesTillToday = schedules.stream()
+                    .filter(s -> s.getDueDate() == null || !s.getDueDate().isAfter(today))
+                    .map(s -> s.getOutstandingAmount() != null ? s.getOutstandingAmount() : (s.getDueAmount() != null ? s.getDueAmount().subtract(s.getPaidAmount() != null ? s.getPaidAmount() : BigDecimal.ZERO) : BigDecimal.ZERO))
+                    .filter(amt -> amt.compareTo(BigDecimal.ZERO) > 0)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal emergencyOutstanding = principal.add(unpaidDailyFeesTillToday);
+
+            return LoanSummaryResponse.builder()
+                    .loanId(loan.getId())
+                    .approvedAmount(loan.getApprovedAmount())
+                    .disbursedAmount(loan.getDisbursedAmount())
+                    .totalLoanAmount(principal)
+                    .totalCollected(totalCollected)
+                    .outstandingAmount(emergencyOutstanding)
+                    .loanStatus(loan.getLoanStatus().name())
+                    .build();
+        }
 
         BigDecimal outstandingAmount = repaymentScheduleRepository.getSumOutstandingByLoan(loanId);
         if (outstandingAmount == null) outstandingAmount = BigDecimal.ZERO;

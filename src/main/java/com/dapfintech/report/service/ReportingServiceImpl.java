@@ -693,7 +693,9 @@ public class ReportingServiceImpl implements ReportingService {
             String marketName = (loan.getCustomer() != null && loan.getCustomer().getMarket() != null) ? loan.getCustomer().getMarket().getMarketName() : "";
             
             double disbursedAmount = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount().doubleValue() : (loan.getApprovedAmount() != null ? loan.getApprovedAmount().doubleValue() : (loan.getLoanAmount() != null ? loan.getLoanAmount().doubleValue() : 0.0));
-            String interestRateStr = loan.getInterestRate() != null ? loan.getInterestRate().toString() + "%" : "-";
+            String interestRateStr = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY)
+                    ? (loan.getInterestRate() != null ? "₹" + loan.getInterestRate().stripTrailingZeros().toPlainString() + "/day" : "-")
+                    : (loan.getInterestRate() != null ? loan.getInterestRate().toString() + "%" : "-");
 
             String loanTypeStr = "";
             if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
@@ -706,8 +708,8 @@ public class ReportingServiceImpl implements ReportingService {
 
             String tenureStr = "";
             if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
-                double val = disbursedAmount * (loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0) / 100.0;
-                tenureStr = (loan.getTenure() != null ? loan.getTenure() + " Days (" : "") + String.format("%.2f/day", val) + (loan.getTenure() != null ? ")" : "");
+                double val = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                tenureStr = String.format("₹%.0f/day", val);
             } else {
                 if (loan.getTenure() != null) {
                     if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenureStr = loan.getTenure() + " Days";
@@ -730,13 +732,13 @@ public class ReportingServiceImpl implements ReportingService {
                     .sum();
 
             List<com.dapfintech.loan.entity.LoanRepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loanId);
-            double totalLoanAmount = schedules.stream()
-                    .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                    .sum();
+            double totalLoanAmount = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY)
+                    ? disbursedAmount
+                    : schedules.stream().mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0).sum();
             if (totalLoanAmount <= 0) {
                 double p = disbursedAmount;
                 double r = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
-                totalLoanAmount = p + (p * r / 100.0);
+                totalLoanAmount = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) ? p : p + (p * r / 100.0);
             }
 
             String statusStr = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
@@ -843,7 +845,7 @@ public class ReportingServiceImpl implements ReportingService {
 
                 double todayEdi = 0.0;
                 if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
-                    todayEdi = disbursedAmount * (loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0) / 100.0;
+                    todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
                 } else {
                     todayEdi = dailyEdi.getOrDefault(curr, 0.0);
                 }
@@ -894,7 +896,9 @@ public class ReportingServiceImpl implements ReportingService {
             String marketName = (loan.getCustomer() != null && loan.getCustomer().getMarket() != null) ? loan.getCustomer().getMarket().getMarketName() : "";
 
             double disbursedAmount = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount().doubleValue() : (loan.getApprovedAmount() != null ? loan.getApprovedAmount().doubleValue() : (loan.getLoanAmount() != null ? loan.getLoanAmount().doubleValue() : 0.0));
-            String interestRateStr = loan.getInterestRate() != null ? loan.getInterestRate().toString() + "%" : "-";
+            String interestRateStr = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY)
+                    ? (loan.getInterestRate() != null ? "₹" + loan.getInterestRate().stripTrailingZeros().toPlainString() + "/day" : "-")
+                    : (loan.getInterestRate() != null ? loan.getInterestRate().toString() + "%" : "-");
 
             String loanTypeStr = "";
             if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
@@ -907,8 +911,8 @@ public class ReportingServiceImpl implements ReportingService {
 
             String tenureStr = "";
             if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
-                double val = disbursedAmount * (loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0) / 100.0;
-                tenureStr = (loan.getTenure() != null ? loan.getTenure() + " Days (" : "") + String.format("%.2f/day", val) + (loan.getTenure() != null ? ")" : "");
+                double val = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                tenureStr = String.format("₹%.0f/day", val);
             } else {
                 if (loan.getTenure() != null) {
                     if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenureStr = loan.getTenure() + " Days";
@@ -931,13 +935,13 @@ public class ReportingServiceImpl implements ReportingService {
                     .sum();
 
             List<com.dapfintech.loan.entity.LoanRepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loanId);
-            double totalLoanAmount = schedules.stream()
-                    .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                    .sum();
+            double totalLoanAmount = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY)
+                    ? disbursedAmount
+                    : schedules.stream().mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0).sum();
             if (totalLoanAmount <= 0) {
                 double p = disbursedAmount;
                 double r = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
-                totalLoanAmount = p + (p * r / 100.0);
+                totalLoanAmount = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) ? p : p + (p * r / 100.0);
             }
 
             String statusStr = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
@@ -1046,7 +1050,7 @@ public class ReportingServiceImpl implements ReportingService {
 
                 double todayEdi = 0.0;
                 if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
-                    todayEdi = disbursedAmount * (loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0) / 100.0;
+                    todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
                 } else {
                     todayEdi = dailyEdi.getOrDefault(curr, 0.0);
                 }
@@ -1105,7 +1109,9 @@ public class ReportingServiceImpl implements ReportingService {
         String marketName = (loan.getCustomer() != null && loan.getCustomer().getMarket() != null) ? loan.getCustomer().getMarket().getMarketName() : "";
 
         double disbursedAmount = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount().doubleValue() : (loan.getApprovedAmount() != null ? loan.getApprovedAmount().doubleValue() : (loan.getLoanAmount() != null ? loan.getLoanAmount().doubleValue() : 0.0));
-        String interestRateStr = loan.getInterestRate() != null ? loan.getInterestRate().toString() + "%" : "-";
+        String interestRateStr = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY)
+                ? (loan.getInterestRate() != null ? "₹" + loan.getInterestRate().stripTrailingZeros().toPlainString() + "/day" : "-")
+                : (loan.getInterestRate() != null ? loan.getInterestRate().toString() + "%" : "-");
 
         String loanTypeStr = "";
         if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
@@ -1118,8 +1124,8 @@ public class ReportingServiceImpl implements ReportingService {
 
         String tenureStr = "";
         if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
-            double val = disbursedAmount * (loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0) / 100.0;
-            tenureStr = (loan.getTenure() != null ? loan.getTenure() + " Days (" : "") + String.format("%.2f/day", val) + (loan.getTenure() != null ? ")" : "");
+            double val = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+            tenureStr = String.format("₹%.0f/day", val);
         } else {
             if (loan.getTenure() != null) {
                 if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenureStr = loan.getTenure() + " Days";
@@ -1141,13 +1147,13 @@ public class ReportingServiceImpl implements ReportingService {
                 .mapToDouble(c -> c.getCollectedAmount() != null ? c.getCollectedAmount().doubleValue() : 0.0)
                 .sum();
 
-        double totalLoanAmount = schedules.stream()
-                .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                .sum();
+        double totalLoanAmount = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY)
+                ? disbursedAmount
+                : schedules.stream().mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0).sum();
         if (totalLoanAmount <= 0) {
             double p = disbursedAmount;
             double r = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
-            totalLoanAmount = p + (p * r / 100.0);
+            totalLoanAmount = (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) ? p : p + (p * r / 100.0);
         }
 
         String statusStr = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
@@ -1193,7 +1199,7 @@ public class ReportingServiceImpl implements ReportingService {
         while (!curr.isAfter(end)) {
             double todayEdi = 0.0;
             if (loan.getLoanType() == LoanType.EMERGENCY) {
-                todayEdi = disbursedAmount * (loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0) / 100.0;
+                todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
             } else {
                 todayEdi = dailyEdi.getOrDefault(curr, 0.0);
             }

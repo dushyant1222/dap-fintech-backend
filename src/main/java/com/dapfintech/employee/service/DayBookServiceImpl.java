@@ -138,14 +138,27 @@ public class DayBookServiceImpl implements DayBookService {
 
             // 2. Sync Loans Disbursed (New Loans)
             List<Loan> disbursedLoans;
-            if (!marketIds.isEmpty()) {
-                disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
-                        employeeId, marketIds, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
-                );
+            if (date.isEqual(LocalDate.of(2026, 9, 29))) {
+                java.time.LocalDateTime cutoffEnd = date.atTime(23, 59, 59);
+                if (!marketIds.isEmpty()) {
+                    disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsUpTo(
+                            employeeId, marketIds, cutoffEnd
+                    );
+                } else {
+                    disbursedLoans = loanRepository.findDisbursedLoansByEmployeeUpTo(
+                            employeeId, cutoffEnd
+                    );
+                }
             } else {
-                disbursedLoans = loanRepository.findDisbursedLoansByEmployeeBetween(
-                        employeeId, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
-                );
+                if (!marketIds.isEmpty()) {
+                    disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
+                            employeeId, marketIds, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+                    );
+                } else {
+                    disbursedLoans = loanRepository.findDisbursedLoansByEmployeeBetween(
+                            employeeId, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+                    );
+                }
             }
 
             if (disbursedLoans != null && !disbursedLoans.isEmpty()) {
@@ -545,14 +558,27 @@ public class DayBookServiceImpl implements DayBookService {
                     .collect(Collectors.toList());
 
             List<Loan> disbursedLoans;
-            if (!marketIds.isEmpty()) {
-                disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
-                        employeeId, marketIds, start, end
-                );
+            if (date.isEqual(LocalDate.of(2026, 9, 29))) {
+                java.time.LocalDateTime cutoffEnd = date.atTime(23, 59, 59);
+                if (!marketIds.isEmpty()) {
+                    disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsUpTo(
+                            employeeId, marketIds, cutoffEnd
+                    );
+                } else {
+                    disbursedLoans = loanRepository.findDisbursedLoansByEmployeeUpTo(
+                            employeeId, cutoffEnd
+                    );
+                }
             } else {
-                disbursedLoans = loanRepository.findDisbursedLoansByEmployeeBetween(
-                        employeeId, start, end
-                );
+                if (!marketIds.isEmpty()) {
+                    disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
+                            employeeId, marketIds, start, end
+                    );
+                } else {
+                    disbursedLoans = loanRepository.findDisbursedLoansByEmployeeBetween(
+                            employeeId, start, end
+                    );
+                }
             }
 
             if (disbursedLoans != null && !disbursedLoans.isEmpty()) {

@@ -420,7 +420,6 @@ public class OnboardingServiceImpl implements OnboardingService {
         // 6. Generate Historical Schedule
         LocalDate effectiveCutoff = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
         if (isEmergency) {
-            BigDecimal principal = savedLoan.getApprovedAmount();
             List<LoanRepaymentSchedule> emergencySchedules = new ArrayList<>();
             BigDecimal dailyInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
 
@@ -462,33 +461,6 @@ public class OnboardingServiceImpl implements OnboardingService {
                             .repaymentStatus(RepaymentStatus.PENDING)
                             .build());
                 }
-
-                // Principal repayment schedule due on closure
-                emergencySchedules.add(LoanRepaymentSchedule.builder()
-                        .loan(savedLoan)
-                        .installmentNumber(emergencySchedules.size() + 1)
-                        .dueDate(endDate)
-                        .principalAmount(principal)
-                        .interestAmount(BigDecimal.ZERO)
-                        .installmentAmount(principal)
-                        .dueAmount(principal)
-                        .paidAmount(BigDecimal.ZERO)
-                        .outstandingAmount(principal)
-                        .repaymentStatus(RepaymentStatus.PENDING)
-                        .build());
-            } else {
-                emergencySchedules.add(LoanRepaymentSchedule.builder()
-                        .loan(savedLoan)
-                        .installmentNumber(1)
-                        .dueDate(endDate)
-                        .principalAmount(principal)
-                        .interestAmount(BigDecimal.ZERO)
-                        .installmentAmount(principal)
-                        .dueAmount(principal)
-                        .paidAmount(BigDecimal.ZERO)
-                        .outstandingAmount(principal)
-                        .repaymentStatus(RepaymentStatus.PENDING)
-                        .build());
             }
 
             scheduleRepository.saveAll(emergencySchedules);
@@ -560,24 +532,6 @@ public class OnboardingServiceImpl implements OnboardingService {
                 }
             }
 
-            // Also record loan disbursement in DayBook
-            if (collector != null && disbursed.compareTo(BigDecimal.ZERO) > 0) {
-                try {
-                    DayBookTransactionRequest disReq = new DayBookTransactionRequest();
-                    disReq.setType("LOANS_DISBURSED");
-                    disReq.setAmount(disbursed);
-                    disReq.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
-                            + " (" + savedLoan.getLoanCode() + ")");
-                    dayBookService.addTransactionForDate(
-                            collector.getId(),
-                            disDate,
-                            disReq
-                    );
-                } catch (Exception e) {
-                    log.warn("Could not record loan disbursement in daybook for collector {}: {}", collector.getId(), e.getMessage());
-                }
-            }
-
             // Check if fully paid off
             if (isEmergency) {
                 // Emergency loan is only closed if principal + all interest up to today was paid
@@ -598,6 +552,24 @@ public class OnboardingServiceImpl implements OnboardingService {
                     savedLoan.setLoanStatus(LoanStatus.CLOSED);
                     savedLoan = loanRepository.save(savedLoan);
                 }
+            }
+        }
+
+        // Also record loan disbursement in DayBook on effectiveCutoff (29 Sep 2026) for ALL loans
+        if (collector != null && disbursed.compareTo(BigDecimal.ZERO) > 0) {
+            try {
+                DayBookTransactionRequest disReq = new DayBookTransactionRequest();
+                disReq.setType("LOANS_DISBURSED");
+                disReq.setAmount(disbursed);
+                disReq.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
+                        + " (" + savedLoan.getLoanCode() + ")");
+                dayBookService.addTransactionForDate(
+                        collector.getId(),
+                        effectiveCutoff,
+                        disReq
+                );
+            } catch (Exception e) {
+                log.warn("Could not record loan disbursement in daybook for collector {}: {}", collector.getId(), e.getMessage());
             }
         }
 

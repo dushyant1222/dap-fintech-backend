@@ -243,6 +243,29 @@ public interface LoanRepository
 
     @Query("""
             SELECT l FROM Loan l
+            WHERE (l.createdBy.id = :employeeId OR l.customer.market.id IN :marketIds)
+            AND l.disbursementDate <= :end
+            ORDER BY l.disbursementDate ASC
+            """)
+    List<Loan> findDisbursedLoansForEmployeeOrMarketsUpTo(
+            @Param("employeeId") UUID employeeId,
+            @Param("marketIds") List<UUID> marketIds,
+            @Param("end") java.time.LocalDateTime end
+    );
+
+    @Query("""
+            SELECT l FROM Loan l
+            WHERE l.createdBy.id = :employeeId
+            AND l.disbursementDate <= :end
+            ORDER BY l.disbursementDate ASC
+            """)
+    List<Loan> findDisbursedLoansByEmployeeUpTo(
+            @Param("employeeId") UUID employeeId,
+            @Param("end") java.time.LocalDateTime end
+    );
+
+    @Query("""
+            SELECT l FROM Loan l
             WHERE l.createdBy.id = :employeeId
             AND l.disbursementDate BETWEEN :start AND :end
             ORDER BY l.disbursementDate ASC
