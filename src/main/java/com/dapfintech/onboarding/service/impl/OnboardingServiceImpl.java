@@ -211,10 +211,27 @@ public class OnboardingServiceImpl implements OnboardingService {
         try (InputStream is = file.getInputStream(); Workbook workbook = WorkbookFactory.create(is)) {
             Sheet sheet = workbook.getSheetAt(0);
             int lastRowNum = sheet.getLastRowNum();
-            Row headerRow = sheet.getRow(0);
-            ColumnMapping mapping = detectColumns(headerRow);
 
-            for (int r = 1; r <= lastRowNum; r++) {
+            // Try row 0 as header; if it looks like a title row (few matches), try row 1
+            Row headerRow0 = sheet.getRow(0);
+            Row headerRow1 = sheet.getRow(1);
+            ColumnMapping mapping0 = detectColumns(headerRow0);
+            ColumnMapping mapping1 = detectColumns(headerRow1);
+            int score0 = scoreMapping(mapping0);
+            int score1 = scoreMapping(mapping1);
+            ColumnMapping mapping;
+            int dataStartRow;
+            if (score1 > score0) {
+                mapping = mapping1;
+                dataStartRow = 2; // headers were at row 1, data starts at row 2
+                log.info("Using row 1 as header row (score {} vs {}). receivedAmountCol={}", score1, score0, mapping.receivedAmountCol);
+            } else {
+                mapping = mapping0;
+                dataStartRow = 1;
+                log.info("Using row 0 as header row (score {} vs {}). receivedAmountCol={}", score0, score1, mapping.receivedAmountCol);
+            }
+
+            for (int r = dataStartRow; r <= lastRowNum; r++) {
                 Row row = sheet.getRow(r);
                 if (row == null || isRowEmpty(row)) {
                     continue;
@@ -321,7 +338,7 @@ public class OnboardingServiceImpl implements OnboardingService {
             }
         }
 
-        // 4. Generate Loan Code
+        // 4. Generate Loan Code - find next unique number using DB count query (cache-safe)
         String typePrefix = req.getLoanType() == LoanType.EMERGENCY ? "ELN" : "RLN";
         String custPrefix = "NA";
         if (customer.getFirstName() != null && !customer.getFirstName().trim().isEmpty()) {
@@ -334,8 +351,11 @@ public class OnboardingServiceImpl implements OnboardingService {
             marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : (mName.length() == 1 ? mName + "X" : "NA");
         }
         String baseCode = String.format("%s-%s-%s", typePrefix, custPrefix, marketPrefix);
-        int num = 1;
+        // Count how many loans already exist with this baseCode prefix to get next number
+        long existingCount = loanRepository.countByLoanCodeStartingWith(baseCode + "-");
+        int num = (int) existingCount + 1;
         String loanCode = baseCode + "-" + num;
+        // Safety loop in case of gaps or race conditions
         while (loanRepository.existsByLoanCode(loanCode)) {
             num++;
             loanCode = baseCode + "-" + num;
@@ -597,6 +617,23 @@ public class OnboardingServiceImpl implements OnboardingService {
         int frequencyCol = -1;
         int disbursedCol = -1;
         boolean isLegacyTemplate = false;
+    }
+
+    /** Score how many columns were detected - used to pick the best header row */
+    private int scoreMapping(ColumnMapping m) {
+        if (m == null) return 0;
+        int score = 0;
+        if (m.phoneCol != -1) score++;
+        if (m.nameCol != -1) score++;
+        if (m.loanTypeCol != -1) score++;
+        if (m.dailyCollectionCol != -1) score++;
+        if (m.tenureCol != -1) score++;
+        if (m.issueDateCol != -1) score++;
+        if (m.receivedAmountCol != -1) score++;
+        if (m.balanceAmountCol != -1) score++;
+        if (m.marketCol != -1) score++;
+        if (m.collectorCol != -1) score++;
+        return score;
     }
 
     private ColumnMapping detectColumns(Row headerRow) {

@@ -225,4 +225,6 @@ public interface LoanRepository
     @Modifying
     @Query(value = "DELETE FROM loan_closures WHERE loan_id = :loanId", nativeQuery = true)
     void deleteClosuresByLoanId(@Param("loanId") UUID loanId);
+
+    long countByLoanCodeStartingWith(String prefix);
 }
