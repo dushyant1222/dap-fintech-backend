@@ -34,6 +34,8 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     
     List<LoanCollection> findAllByOrderByCollectionDateDesc();
     
+    List<LoanCollection> findByReceiptNumberStartingWith(String prefix);
+    
     Long countByLoanCustomerMarketId(
             UUID marketId
     );

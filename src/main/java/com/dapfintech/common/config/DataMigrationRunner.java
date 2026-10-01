@@ -25,6 +25,7 @@ public class DataMigrationRunner implements CommandLineRunner {
     private final CustomerRepository customerRepository;
     private final LoanRepository loanRepository;
     private final com.dapfintech.auth.repository.PermissionRepository permissionRepository;
+    private final com.dapfintech.loan.repository.LoanCollectionRepository collectionRepository;
 
     @Override
     @Transactional
@@ -162,6 +163,39 @@ public class DataMigrationRunner implements CommandLineRunner {
             }
         }
 
-        log.info("Data Migration for Sequential IDs completed successfully.");
+        // Consolidate historical collections dated before 2026-09-29 into a single entry on 2026-09-29
+        try {
+            List<com.dapfintech.loan.entity.LoanCollection> histCols = collectionRepository.findByReceiptNumberStartingWith("HIST-");
+            if (!histCols.isEmpty()) {
+                java.time.LocalDateTime targetTime = java.time.LocalDateTime.of(2026, 9, 29, 17, 0);
+                java.util.Map<com.dapfintech.loan.entity.Loan, List<com.dapfintech.loan.entity.LoanCollection>> byLoan = histCols.stream()
+                        .filter(c -> c.getLoan() != null)
+                        .collect(java.util.stream.Collectors.groupingBy(com.dapfintech.loan.entity.LoanCollection::getLoan));
+
+                for (java.util.Map.Entry<com.dapfintech.loan.entity.Loan, List<com.dapfintech.loan.entity.LoanCollection>> entry : byLoan.entrySet()) {
+                    List<com.dapfintech.loan.entity.LoanCollection> cols = entry.getValue();
+                    if (cols.size() > 1 || cols.stream().anyMatch(c -> c.getCollectionDate() != null && c.getCollectionDate().isBefore(java.time.LocalDateTime.of(2026, 9, 29, 0, 0)))) {
+                        java.math.BigDecimal total = cols.stream()
+                                .map(c -> c.getCollectedAmount() != null ? c.getCollectedAmount() : java.math.BigDecimal.ZERO)
+                                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+                        com.dapfintech.loan.entity.LoanCollection keep = cols.get(0);
+                        keep.setCollectedAmount(total);
+                        keep.setCollectionDate(targetTime);
+                        keep.setRemarks("Consolidated historical collection up to 29 Sep 2026");
+                        collectionRepository.save(keep);
+
+                        for (int i = 1; i < cols.size(); i++) {
+                            collectionRepository.delete(cols.get(i));
+                        }
+                        log.info("Consolidated {} historical collections for loan {} into single 29 Sep entry of amount {}", cols.size(), entry.getKey().getLoanCode(), total);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not auto-consolidate historical collections: {}", e.getMessage());
+        }
+
+        log.info("Data Migration for Sequential IDs and Historical Collections completed successfully.");
     }
 }

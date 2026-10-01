@@ -20,6 +20,8 @@ public class LoanFilterRequest {
 
     private UUID employeeId;
 
+    private UUID marketId;
+
     private BigDecimal minAmount;
 
     private BigDecimal maxAmount;

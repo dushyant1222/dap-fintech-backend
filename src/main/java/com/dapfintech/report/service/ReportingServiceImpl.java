@@ -82,7 +82,11 @@ public class ReportingServiceImpl implements ReportingService {
             } catch(Exception e) { throw new RuntimeException(e); }
         }
 
+        java.time.LocalDate cutoffDate = java.time.LocalDate.of(2026, 9, 29);
         java.time.LocalDate minDate = loans.stream().map(l -> l.getDisbursementDate().toLocalDate()).min(java.time.LocalDate::compareTo).orElse(java.time.LocalDate.now());
+        if (minDate.isBefore(cutoffDate)) {
+            minDate = cutoffDate;
+        }
         java.time.LocalDate maxDate = java.time.LocalDate.now();
         for (com.dapfintech.loan.entity.Loan l : loans) {
             java.time.LocalDate end = l.getDisbursementDate().toLocalDate();
@@ -250,6 +254,9 @@ public class ReportingServiceImpl implements ReportingService {
                         receivedAmount += lc.getCollectedAmount().doubleValue();
                         if (lc.getCollectionDate() != null) {
                             java.time.LocalDate cd = lc.getCollectionDate().toLocalDate();
+                            if (cd.isBefore(cutoffDate)) {
+                                cd = cutoffDate;
+                            }
                             dailyMap.put(cd, dailyMap.getOrDefault(cd, 0.0) + lc.getCollectedAmount().doubleValue());
                             if (lastCollectionDate == null || cd.isAfter(lastCollectionDate)) {
                                 lastCollectionDate = cd;
@@ -317,7 +324,7 @@ public class ReportingServiceImpl implements ReportingService {
 
                 for (java.time.LocalDate d : dateColumns) {
                     Cell cell = row.createCell(c++);
-                    if (issueDate != null && d.isBefore(issueDate)) {
+                    if (issueDate != null && d.isBefore(issueDate) && !d.isEqual(cutoffDate)) {
                         cell.setCellValue("-");
                         cell.setCellStyle(centerStyle);
                     } else if (isLoanClosed && lastCollectionDate != null && d.isAfter(lastCollectionDate)) {
@@ -396,7 +403,11 @@ public class ReportingServiceImpl implements ReportingService {
                 return new ByteArrayInputStream(out.toByteArray());
             }
 
+            java.time.LocalDate cutoffDate = java.time.LocalDate.of(2026, 9, 29);
             java.time.LocalDate minDate = loans.stream().map(l -> l.getDisbursementDate().toLocalDate()).min(java.time.LocalDate::compareTo).orElse(java.time.LocalDate.now());
+            if (minDate.isBefore(cutoffDate)) {
+                minDate = cutoffDate;
+            }
             java.time.LocalDate maxDate = java.time.LocalDate.now();
             for (com.dapfintech.loan.entity.Loan l : loans) {
                 java.time.LocalDate end = l.getDisbursementDate().toLocalDate();
@@ -498,6 +509,9 @@ public class ReportingServiceImpl implements ReportingService {
                         receivedAmount += lc.getCollectedAmount().doubleValue();
                         if (lc.getCollectionDate() != null) {
                             java.time.LocalDate cd = lc.getCollectionDate().toLocalDate();
+                            if (cd.isBefore(cutoffDate)) {
+                                cd = cutoffDate;
+                            }
                             dailyMap.put(cd, dailyMap.getOrDefault(cd, 0.0) + lc.getCollectedAmount().doubleValue());
                             if (lastCollectionDate == null || cd.isAfter(lastCollectionDate)) {
                                 lastCollectionDate = cd;
@@ -550,7 +564,7 @@ public class ReportingServiceImpl implements ReportingService {
                 double advanceBalance = 0.0;
 
                 for (java.time.LocalDate d : dateColumns) {
-                    if (issueDate != null && d.isBefore(issueDate)) {
+                    if (issueDate != null && d.isBefore(issueDate) && !d.isEqual(cutoffDate)) {
                         com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("-", font));
                         cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
                         table.addCell(cell);
@@ -784,7 +798,11 @@ public class ReportingServiceImpl implements ReportingService {
             }
 
             // Date Range & Ledger Calculation
+            java.time.LocalDate cutoffDate = java.time.LocalDate.of(2026, 9, 29);
             java.time.LocalDate start = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate() : (loan.getCreatedAt() != null ? loan.getCreatedAt().toLocalDate() : today);
+            if (start.isBefore(cutoffDate)) {
+                start = cutoffDate;
+            }
             java.time.LocalDate end = today;
             if (!isActive) {
                 java.time.LocalDate maxCol = cols.stream().filter(c -> c.getCollectionDate() != null).map(c -> c.getCollectionDate().toLocalDate()).max(java.time.LocalDate::compareTo).orElse(start);
@@ -801,6 +819,9 @@ public class ReportingServiceImpl implements ReportingService {
             for (com.dapfintech.loan.entity.LoanCollection c : cols) {
                 if (c.getCollectedAmount() == null || c.getCollectionDate() == null) continue;
                 java.time.LocalDate d = c.getCollectionDate().toLocalDate();
+                if (d.isBefore(cutoffDate)) {
+                    d = cutoffDate;
+                }
                 dailyCols.put(d, dailyCols.getOrDefault(d, 0.0) + c.getCollectedAmount().doubleValue());
             }
 
@@ -974,7 +995,11 @@ public class ReportingServiceImpl implements ReportingService {
                 table.addCell(cell);
             }
 
+            java.time.LocalDate cutoffDate = java.time.LocalDate.of(2026, 9, 29);
             java.time.LocalDate start = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate() : (loan.getCreatedAt() != null ? loan.getCreatedAt().toLocalDate() : today);
+            if (start.isBefore(cutoffDate)) {
+                start = cutoffDate;
+            }
             java.time.LocalDate end = today;
             if (!isActive) {
                 java.time.LocalDate maxCol = cols.stream().filter(c -> c.getCollectionDate() != null).map(c -> c.getCollectionDate().toLocalDate()).max(java.time.LocalDate::compareTo).orElse(start);
@@ -991,6 +1016,9 @@ public class ReportingServiceImpl implements ReportingService {
             for (com.dapfintech.loan.entity.LoanCollection c : cols) {
                 if (c.getCollectedAmount() == null || c.getCollectionDate() == null) continue;
                 java.time.LocalDate d = c.getCollectionDate().toLocalDate();
+                if (d.isBefore(cutoffDate)) {
+                    d = cutoffDate;
+                }
                 dailyCols.put(d, dailyCols.getOrDefault(d, 0.0) + c.getCollectedAmount().doubleValue());
             }
 
@@ -1125,7 +1153,11 @@ public class ReportingServiceImpl implements ReportingService {
         String statusStr = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
         boolean isActive = !"CLOSED".equalsIgnoreCase(statusStr);
 
+        LocalDate cutoffDate = LocalDate.of(2026, 9, 29);
         LocalDate start = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate() : (loan.getCreatedAt() != null ? loan.getCreatedAt().toLocalDate() : today);
+        if (start.isBefore(cutoffDate)) {
+            start = cutoffDate;
+        }
         LocalDate end = today;
         if (!isActive) {
             LocalDate maxCol = cols.stream().filter(c -> c.getCollectionDate() != null).map(c -> c.getCollectionDate().toLocalDate()).max(LocalDate::compareTo).orElse(start);
@@ -1142,6 +1174,9 @@ public class ReportingServiceImpl implements ReportingService {
         for (LoanCollection c : cols) {
             if (c.getCollectedAmount() == null || c.getCollectionDate() == null) continue;
             LocalDate d = c.getCollectionDate().toLocalDate();
+            if (d.isBefore(cutoffDate)) {
+                d = cutoffDate;
+            }
             dailyCols.put(d, dailyCols.getOrDefault(d, 0.0) + c.getCollectedAmount().doubleValue());
         }
 

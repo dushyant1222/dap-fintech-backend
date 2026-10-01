@@ -51,6 +51,16 @@ public class LoanSpecification {
                                 criteriaBuilder.like(
 
                                         criteriaBuilder.lower(
+                                                root.get("loanCode")
+                                        ),
+
+                                        keyword
+
+                                ),
+
+                                criteriaBuilder.like(
+
+                                        criteriaBuilder.lower(
                                                 root
                                                         .get("customer")
                                                         .get("firstName")
@@ -75,6 +85,25 @@ public class LoanSpecification {
                                 criteriaBuilder.like(
 
                                         criteriaBuilder.lower(
+                                                criteriaBuilder.concat(
+                                                        criteriaBuilder.concat(
+                                                                root.get("customer").get("firstName"),
+                                                                " "
+                                                        ),
+                                                        criteriaBuilder.coalesce(
+                                                                root.get("customer").get("lastName"),
+                                                                ""
+                                                        )
+                                                )
+                                        ),
+
+                                        keyword
+
+                                ),
+
+                                criteriaBuilder.like(
+
+                                        criteriaBuilder.lower(
                                                 root
                                                         .get("customer")
                                                         .get("mobileNumber")
@@ -90,6 +119,19 @@ public class LoanSpecification {
                                                 root
                                                         .get("customer")
                                                         .get("customerCode")
+                                        ),
+
+                                        keyword
+
+                                ),
+
+                                criteriaBuilder.like(
+
+                                        criteriaBuilder.lower(
+                                                root
+                                                        .get("customer")
+                                                        .get("market")
+                                                        .get("marketName")
                                         ),
 
                                         keyword
@@ -172,6 +214,30 @@ public class LoanSpecification {
                                         .get("id"),
 
                                 filter.getEmployeeId()
+
+                        )
+
+                );
+
+            }
+
+
+            //--------------------------------------------------
+            // MARKET
+            //--------------------------------------------------
+
+            if (filter.getMarketId() != null) {
+
+                predicates.add(
+
+                        criteriaBuilder.equal(
+
+                                root
+                                        .get("customer")
+                                        .get("market")
+                                        .get("id"),
+
+                                filter.getMarketId()
 
                         )
 

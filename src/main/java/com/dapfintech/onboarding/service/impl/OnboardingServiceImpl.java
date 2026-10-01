@@ -469,7 +469,6 @@ public class OnboardingServiceImpl implements OnboardingService {
         if (totalCollected.compareTo(BigDecimal.ZERO) > 0) {
             List<LoanRepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(savedLoan.getId());
             BigDecimal remaining = totalCollected;
-            List<LoanCollection> historicalCollections = new ArrayList<>();
 
             for (LoanRepaymentSchedule s : schedules) {
                 if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
@@ -484,51 +483,30 @@ public class OnboardingServiceImpl implements OnboardingService {
                     s.setPaidAmount(due);
                     s.setOutstandingAmount(BigDecimal.ZERO);
                     s.setRepaymentStatus(RepaymentStatus.PAID);
-                    LocalDate pDate = s.getDueDate() != null ? s.getDueDate() : disDate;
-                    if (pDate.isAfter(effectiveCutoff)) {
-                        pDate = effectiveCutoff;
-                    }
-
-                    LoanCollection col = LoanCollection.builder()
-                            .loan(savedLoan)
-                            .repaymentSchedule(s)
-                            .receiptNumber("HIST-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
-                            .collectedAmount(due)
-                            .collectionDate(pDate.atTime(17, 0))
-                            .collectionMode(CollectionMode.CASH)
-                            .collectedBy(collector)
-                            .build();
-                    historicalCollections.add(col);
-
                     remaining = remaining.subtract(due);
                 } else {
                     s.setPaidAmount(remaining);
                     s.setOutstandingAmount(due.subtract(remaining));
                     s.setRepaymentStatus(RepaymentStatus.PENDING);
-                    LocalDate pDate = req.getLastPaymentDate() != null ? req.getLastPaymentDate() : (s.getDueDate() != null ? s.getDueDate() : disDate);
-                    if (pDate.isAfter(effectiveCutoff)) {
-                        pDate = effectiveCutoff;
-                    }
-
-                    LoanCollection col = LoanCollection.builder()
-                            .loan(savedLoan)
-                            .repaymentSchedule(s)
-                            .receiptNumber("HIST-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
-                            .collectedAmount(remaining)
-                            .collectionDate(pDate.atTime(17, 0))
-                            .collectionMode(CollectionMode.CASH)
-                            .collectedBy(collector)
-                            .build();
-                    historicalCollections.add(col);
-
                     remaining = BigDecimal.ZERO;
                 }
             }
 
             scheduleRepository.saveAll(schedules);
-            if (!historicalCollections.isEmpty()) {
-                collectionRepository.saveAll(historicalCollections);
-            }
+
+            // Exactly ONE consolidated collection entry on 29 Sep 2026 (cutoff) for total collected amount
+            LoanRepaymentSchedule firstSchedule = schedules.isEmpty() ? null : schedules.get(0);
+            LoanCollection consolidatedCol = LoanCollection.builder()
+                    .loan(savedLoan)
+                    .repaymentSchedule(firstSchedule)
+                    .receiptNumber("HIST-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                    .collectedAmount(totalCollected)
+                    .collectionDate(effectiveCutoff.atTime(17, 0))
+                    .collectionMode(CollectionMode.CASH)
+                    .collectedBy(collector)
+                    .remarks("Historical collection up to 29 Sep 2026")
+                    .build();
+            collectionRepository.save(consolidatedCol);
 
             // Check if fully paid off
             if (isEmergency) {
