@@ -26,6 +26,8 @@ public class DataMigrationRunner implements CommandLineRunner {
     private final LoanRepository loanRepository;
     private final com.dapfintech.auth.repository.PermissionRepository permissionRepository;
     private final com.dapfintech.loan.repository.LoanCollectionRepository collectionRepository;
+    private final com.dapfintech.employee.service.DayBookService dayBookService;
+    private final com.dapfintech.market.repository.EmployeeMarketAssignmentRepository assignmentRepository;
 
     @Override
     @Transactional
@@ -192,10 +194,31 @@ public class DataMigrationRunner implements CommandLineRunner {
                     }
                 }
             }
+
+            // Backfill collectedBy on all HIST- collections and sync employee daybooks for 2026-09-29
+            java.time.LocalDate cutoffDate = java.time.LocalDate.of(2026, 9, 29);
+            List<com.dapfintech.loan.entity.LoanCollection> allHist = collectionRepository.findByReceiptNumberStartingWith("HIST-");
+            for (com.dapfintech.loan.entity.LoanCollection col : allHist) {
+                if (col.getCollectedBy() == null && col.getLoan() != null && col.getLoan().getCustomer() != null && col.getLoan().getCustomer().getMarket() != null) {
+                    java.util.UUID marketId = col.getLoan().getCustomer().getMarket().getId();
+                    List<com.dapfintech.market.entity.EmployeeMarketAssignment> assigns = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+                    if (!assigns.isEmpty()) {
+                        col.setCollectedBy(assigns.get(0).getEmployee());
+                        collectionRepository.save(col);
+                    }
+                }
+            }
+
+            // Auto-sync daybooks for all active employees for 2026-09-29
+            List<User> allEmployees = userRepository.findByRoleRoleName("EMPLOYEE");
+            for (User emp : allEmployees) {
+                dayBookService.getOrCreateDayBook(emp.getId(), cutoffDate);
+                dayBookService.getTransactions(emp.getId(), cutoffDate);
+            }
         } catch (Exception e) {
-            log.warn("Could not auto-consolidate historical collections: {}", e.getMessage());
+            log.warn("Could not auto-consolidate historical collections or sync daybooks: {}", e.getMessage());
         }
 
-        log.info("Data Migration for Sequential IDs and Historical Collections completed successfully.");
+        log.info("Data Migration for Sequential IDs, Historical Collections, and DayBook Sync completed successfully.");
     }
 }

@@ -313,6 +313,15 @@ public class OnboardingServiceImpl implements OnboardingService {
             }
         }
 
+        // Fallback: if no collector specified, use the market's active assigned employee
+        if (collector == null && market != null) {
+            List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(market.getId());
+            if (!assignments.isEmpty()) {
+                collector = assignments.get(0).getEmployee();
+                log.info("No collectorMobile in Excel row — using market employee {} for daybook", collector.getId());
+            }
+        }
+
         // 3. Resolve or Create Customer
         String mobile = req.getMobileNumber().trim();
         Customer customer = customerRepository.findByMobileNumber(mobile).orElse(null);

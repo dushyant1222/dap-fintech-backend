@@ -699,4 +699,28 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
             """, nativeQuery = true)
     BigDecimal getSumCollectedByLoan(@Param("loanId") UUID loanId);
 
+    @Query("""
+            SELECT c FROM LoanCollection c
+            WHERE (c.collectedBy.id = :employeeId OR c.loan.customer.market.id IN :marketIds)
+            AND c.collectionDate BETWEEN :start AND :end
+            ORDER BY c.collectionDate ASC
+            """)
+    List<LoanCollection> findCollectionsForEmployeeOrMarketsBetween(
+            @Param("employeeId") UUID employeeId,
+            @Param("marketIds") List<UUID> marketIds,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end
+    );
+
+    @Query("""
+            SELECT c FROM LoanCollection c
+            WHERE c.collectedBy.id = :employeeId
+            AND c.collectionDate BETWEEN :start AND :end
+            ORDER BY c.collectionDate ASC
+            """)
+    List<LoanCollection> findCollectionsByEmployeeBetween(
+            @Param("employeeId") UUID employeeId,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end
+    );
 }
