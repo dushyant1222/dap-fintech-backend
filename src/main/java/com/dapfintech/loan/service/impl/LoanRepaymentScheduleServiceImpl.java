@@ -82,23 +82,9 @@ public class LoanRepaymentScheduleServiceImpl
     private void generateEmergencySchedule(
             Loan loan
     ) {
-
-        BigDecimal principal =
-                loan.getApprovedAmount();
-
-        BigDecimal interest =
-                principal
-                        .multiply(
-                                loan.getInterestRate()
-                        )
-                        .divide(
-                                BigDecimal.valueOf(100),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        // First day's schedule only contains interest
-        BigDecimal totalDue = interest;
+        // Daily interest is fixed amount per day stored in interestRate
+        BigDecimal dailyInterest = loan.getInterestRate() != null ? loan.getInterestRate() : BigDecimal.ZERO;
+        BigDecimal totalDue = dailyInterest;
 
         LoanRepaymentSchedule schedule =
                 LoanRepaymentSchedule.builder()
@@ -112,7 +98,7 @@ public class LoanRepaymentScheduleServiceImpl
                                 BigDecimal.ZERO
                         )
                         .interestAmount(
-                                interest
+                                dailyInterest
                         )
                         .installmentAmount(
                                 totalDue
@@ -496,11 +482,8 @@ public class LoanRepaymentScheduleServiceImpl
         LocalDate today = LocalDate.now();
 
         for (Loan loan : emergencyLoans) {
-            BigDecimal principal = loan.getApprovedAmount();
-            // Daily interest is always: principal × rate% (flat on original principal)
-            BigDecimal dailyInterest = principal
-                    .multiply(loan.getInterestRate())
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            // Daily interest is fixed amount per day stored in interestRate
+            BigDecimal dailyInterest = loan.getInterestRate() != null ? loan.getInterestRate() : BigDecimal.ZERO;
 
             List<LoanRepaymentSchedule> existingSchedules =
                     scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());

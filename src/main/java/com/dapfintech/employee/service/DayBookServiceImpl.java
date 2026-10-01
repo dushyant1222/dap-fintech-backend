@@ -11,6 +11,7 @@ import com.dapfintech.auth.repository.UserRepository;
 import com.dapfintech.capital.entity.InternalTransfer;
 import com.dapfintech.capital.enums.TransferStatus;
 import com.dapfintech.capital.repository.InternalTransferRepository;
+import com.dapfintech.loan.entity.Loan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,9 @@ public class DayBookServiceImpl implements DayBookService {
     @Autowired
     private com.dapfintech.loan.repository.LoanCollectionRepository loanCollectionRepository;
 
+    @Autowired
+    private com.dapfintech.loan.repository.LoanRepository loanRepository;
+
     @Override
     @Transactional
     public DayBookResponse getOrCreateTodayDayBook(UUID employeeId) {
@@ -80,13 +84,13 @@ public class DayBookServiceImpl implements DayBookService {
             dayBook = dayBookRepository.save(dayBook);
         }
 
-        // Auto-sync collections from loan_collections for employee's assigned markets on this date
-        syncCollectionsForDayBook(dayBook, employeeId, date);
+        // Auto-sync collections & loans disbursed from DB for employee's assigned markets on this date
+        syncDayBookFromDb(dayBook, employeeId, date);
 
         return mapToResponse(dayBook);
     }
 
-    private void syncCollectionsForDayBook(DayBook dayBook, UUID employeeId, LocalDate date) {
+    private void syncDayBookFromDb(DayBook dayBook, UUID employeeId, LocalDate date) {
         try {
             List<com.dapfintech.market.entity.EmployeeMarketAssignment> assignments = 
                     assignmentRepository.findByEmployeeIdAndIsActiveTrue(employeeId);
@@ -95,6 +99,7 @@ public class DayBookServiceImpl implements DayBookService {
                     .map(a -> a.getMarket().getId())
                     .collect(Collectors.toList());
 
+            // 1. Sync Collections
             List<com.dapfintech.loan.entity.LoanCollection> cols;
             if (!marketIds.isEmpty()) {
                 cols = loanCollectionRepository.findCollectionsForEmployeeOrMarketsBetween(
@@ -106,6 +111,7 @@ public class DayBookServiceImpl implements DayBookService {
                 );
             }
 
+            boolean modified = false;
             if (cols != null && !cols.isEmpty()) {
                 BigDecimal actualCollectionSum = cols.stream()
                         .map(c -> c.getCollectedAmount() != null ? c.getCollectedAmount() : BigDecimal.ZERO)
@@ -114,8 +120,7 @@ public class DayBookServiceImpl implements DayBookService {
                 if (actualCollectionSum.compareTo(BigDecimal.ZERO) > 0) {
                     if (dayBook.getCollections() == null || dayBook.getCollections().compareTo(actualCollectionSum) != 0) {
                         dayBook.setCollections(actualCollectionSum);
-                        dayBook.setClosingBalance(calculateClosingBalance(dayBook));
-                        dayBookRepository.save(dayBook);
+                        modified = true;
                     }
 
                     // Also ensure collectedBy is set on any collection missing it
@@ -129,6 +134,36 @@ public class DayBookServiceImpl implements DayBookService {
                         }
                     }
                 }
+            }
+
+            // 2. Sync Loans Disbursed (New Loans)
+            List<Loan> disbursedLoans;
+            if (!marketIds.isEmpty()) {
+                disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
+                        employeeId, marketIds, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+                );
+            } else {
+                disbursedLoans = loanRepository.findDisbursedLoansByEmployeeBetween(
+                        employeeId, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+                );
+            }
+
+            if (disbursedLoans != null && !disbursedLoans.isEmpty()) {
+                BigDecimal actualDisbursedSum = disbursedLoans.stream()
+                        .map(l -> l.getDisbursedAmount() != null ? l.getDisbursedAmount() : (l.getApprovedAmount() != null ? l.getApprovedAmount() : BigDecimal.ZERO))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                if (actualDisbursedSum.compareTo(BigDecimal.ZERO) > 0) {
+                    if (dayBook.getLoansDisbursed() == null || dayBook.getLoansDisbursed().compareTo(actualDisbursedSum) != 0) {
+                        dayBook.setLoansDisbursed(actualDisbursedSum);
+                        modified = true;
+                    }
+                }
+            }
+
+            if (modified) {
+                dayBook.setClosingBalance(calculateClosingBalance(dayBook));
+                dayBookRepository.save(dayBook);
             }
         } catch (Exception e) {
             // Non-fatal sync
@@ -493,6 +528,50 @@ public class DayBookServiceImpl implements DayBookService {
                     }
                     tx.setRemarks(rem);
                     tx.setCreatedAt(c.getCollectionDate() != null ? c.getCollectionDate() : date.atTime(17, 0));
+                    tx = dayBookTransactionRepository.save(tx);
+                    list.add(tx);
+                }
+            }
+        }
+
+        // Check if LOANS_DISBURSED transactions are present
+        boolean hasLoansDisbursed = list.stream().anyMatch(t -> "LOANS_DISBURSED".equalsIgnoreCase(t.getType()));
+        if (!hasLoansDisbursed) {
+            List<com.dapfintech.market.entity.EmployeeMarketAssignment> assignments = 
+                    assignmentRepository.findByEmployeeIdAndIsActiveTrue(employeeId);
+            List<UUID> marketIds = assignments.stream()
+                    .filter(a -> a.getMarket() != null)
+                    .map(a -> a.getMarket().getId())
+                    .collect(Collectors.toList());
+
+            List<Loan> disbursedLoans;
+            if (!marketIds.isEmpty()) {
+                disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
+                        employeeId, marketIds, start, end
+                );
+            } else {
+                disbursedLoans = loanRepository.findDisbursedLoansByEmployeeBetween(
+                        employeeId, start, end
+                );
+            }
+
+            if (disbursedLoans != null && !disbursedLoans.isEmpty()) {
+                DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date).orElse(null);
+                for (Loan l : disbursedLoans) {
+                    BigDecimal disAmount = l.getDisbursedAmount() != null ? l.getDisbursedAmount() : (l.getApprovedAmount() != null ? l.getApprovedAmount() : BigDecimal.ZERO);
+                    if (disAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
+                    tx.setDayBook(dayBook);
+                    tx.setEmployeeId(employeeId);
+                    tx.setType("LOANS_DISBURSED");
+                    tx.setAmount(disAmount);
+                    String custName = l.getCustomer() != null 
+                            ? (l.getCustomer().getFirstName() + " " + (l.getCustomer().getLastName() != null ? l.getCustomer().getLastName() : ""))
+                            : "";
+                    String loanCode = l.getLoanCode() != null ? l.getLoanCode() : "";
+                    tx.setRemarks("New Loan: " + custName + " (" + loanCode + ")");
+                    tx.setCreatedAt(l.getDisbursementDate() != null ? l.getDisbursementDate() : date.atTime(10, 0));
                     tx = dayBookTransactionRepository.save(tx);
                     list.add(tx);
                 }

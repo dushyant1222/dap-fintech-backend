@@ -546,34 +546,11 @@ public class LoanServiceImpl
         // EMERGENCY LOAN
         // -------------------------
         if (request.getLoanType() == LoanType.EMERGENCY) {
-
-            if (request.getTenure() == null || request.getTenure() <= 0) {
-                throw new RuntimeException("Emergency loan days are required");
-            }
-
-            if (request.getLoanAmount() == null) {
-                throw new RuntimeException("Loan amount required");
-            }
-
-            if (request.getInterestRate() == null) {
-                throw new RuntimeException("Interest rate required");
-            }
-
-            totalInterest =
-                    request.getLoanAmount()
-                            .multiply(request.getInterestRate())
-                            .multiply(BigDecimal.valueOf(request.getTenure()))
-                            .divide(
-                                    BigDecimal.valueOf(100),
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
-
-            totalPayable =
-                    request.getLoanAmount()
-                            .add(totalInterest);
-
-            emiAmount = totalPayable;
+            BigDecimal principal = request.getLoanAmount() != null ? request.getLoanAmount() : BigDecimal.ZERO;
+            BigDecimal dailyInterest = request.getInterestRate() != null ? request.getInterestRate() : BigDecimal.ZERO;
+            totalInterest = dailyInterest;
+            totalPayable = principal.add(dailyInterest);
+            emiAmount = dailyInterest;
 
             return CalculateEmiResponse.builder()
                     .emiAmount(emiAmount)

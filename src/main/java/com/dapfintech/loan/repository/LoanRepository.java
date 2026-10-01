@@ -227,4 +227,29 @@ public interface LoanRepository
     void deleteClosuresByLoanId(@Param("loanId") UUID loanId);
 
     long countByLoanCodeStartingWith(String prefix);
+
+    @Query("""
+            SELECT l FROM Loan l
+            WHERE (l.createdBy.id = :employeeId OR l.customer.market.id IN :marketIds)
+            AND l.disbursementDate BETWEEN :start AND :end
+            ORDER BY l.disbursementDate ASC
+            """)
+    List<Loan> findDisbursedLoansForEmployeeOrMarketsBetween(
+            @Param("employeeId") UUID employeeId,
+            @Param("marketIds") List<UUID> marketIds,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end
+    );
+
+    @Query("""
+            SELECT l FROM Loan l
+            WHERE l.createdBy.id = :employeeId
+            AND l.disbursementDate BETWEEN :start AND :end
+            ORDER BY l.disbursementDate ASC
+            """)
+    List<Loan> findDisbursedLoansByEmployeeBetween(
+            @Param("employeeId") UUID employeeId,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end
+    );
 }

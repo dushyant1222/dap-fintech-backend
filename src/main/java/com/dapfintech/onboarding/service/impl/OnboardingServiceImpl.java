@@ -560,6 +560,24 @@ public class OnboardingServiceImpl implements OnboardingService {
                 }
             }
 
+            // Also record loan disbursement in DayBook
+            if (collector != null && disbursed.compareTo(BigDecimal.ZERO) > 0) {
+                try {
+                    DayBookTransactionRequest disReq = new DayBookTransactionRequest();
+                    disReq.setType("LOANS_DISBURSED");
+                    disReq.setAmount(disbursed);
+                    disReq.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
+                            + " (" + savedLoan.getLoanCode() + ")");
+                    dayBookService.addTransactionForDate(
+                            collector.getId(),
+                            disDate,
+                            disReq
+                    );
+                } catch (Exception e) {
+                    log.warn("Could not record loan disbursement in daybook for collector {}: {}", collector.getId(), e.getMessage());
+                }
+            }
+
             // Check if fully paid off
             if (isEmergency) {
                 // Emergency loan is only closed if principal + all interest up to today was paid
