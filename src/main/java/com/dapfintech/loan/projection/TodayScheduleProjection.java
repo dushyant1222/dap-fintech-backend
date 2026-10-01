@@ -14,6 +14,8 @@ public interface TodayScheduleProjection {
 
     UUID getCustomerId();
 
+    String getCustomerCode();
+
     String getCustomerName();
 
     String getMobileNumber();

@@ -110,6 +110,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		    l.loan_code AS loanCode,
     		    s.id AS scheduleId,
     		    c.id AS customerId,
+    		    c.customer_code AS customerCode,
     		    CONCAT(c.first_name, ' ', c.last_name) AS customerName,
     		    c.mobile_number AS mobileNumber,
     		    s.installment_number AS installmentNumber,
@@ -127,7 +128,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		      WHERE s2.loan_id = l.id 
     		      AND s2.repayment_status != 'PAID'
     		  )
-    		ORDER BY c.first_name
+    		ORDER BY c.customer_code, c.first_name
     		""", nativeQuery = true)
     		List<TodayScheduleProjection> getTodaySchedule();
     
@@ -275,6 +276,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		    l.loan_code AS loanCode,
     		    s.id AS scheduleId,
     		    c.id AS customerId,
+    		    c.customer_code AS customerCode,
     		    CONCAT(c.first_name, ' ', c.last_name) AS customerName,
     		    c.mobile_number AS mobileNumber,
     		    s.installment_number AS installmentNumber,
@@ -293,7 +295,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		      WHERE s2.loan_id = l.id 
     		      AND s2.repayment_status != 'PAID'
     		  )
-    		ORDER BY c.first_name
+    		ORDER BY c.customer_code, c.first_name
     		""", nativeQuery = true)
     		List<TodayScheduleProjection>
     		getTodayScheduleByMarket(

@@ -19,6 +19,8 @@ public class TodayScheduleResponse {
 
     private UUID customerId;
 
+    private String customerCode;
+
     private String customerName;
 
     private String mobileNumber;

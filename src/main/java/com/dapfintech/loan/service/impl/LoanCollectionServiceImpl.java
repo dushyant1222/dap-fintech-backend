@@ -224,6 +224,7 @@ public class LoanCollectionServiceImpl
                             .loanCode(schedule.getLoanCode())
                             .scheduleId(schedule.getScheduleId())
                             .customerId(schedule.getCustomerId())
+                            .customerCode(schedule.getCustomerCode())
                             .customerName(schedule.getCustomerName())
                             .mobileNumber(schedule.getMobileNumber())
                             .installmentNumber(schedule.getInstallmentNumber())
@@ -503,6 +504,10 @@ public class LoanCollectionServiceImpl
 
                                 .customerId(
                                         schedule.getCustomerId()
+                                )
+
+                                .customerCode(
+                                        schedule.getCustomerCode()
                                 )
 
                                 .customerName(
