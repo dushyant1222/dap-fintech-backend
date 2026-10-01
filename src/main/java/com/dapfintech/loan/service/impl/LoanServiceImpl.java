@@ -11,7 +11,9 @@ import com.dapfintech.market.entity.EmployeeMarketAssignment;
 import com.dapfintech.market.repository.EmployeeMarketAssignmentRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Sort;
@@ -45,6 +47,8 @@ import com.dapfintech.loan.repository.LoanChargeRepository;
 import com.dapfintech.loan.repository.LoanCollectionRepository;
 import com.dapfintech.loan.repository.LoanRepaymentScheduleRepository;
 import com.dapfintech.loan.repository.LoanRepository;
+import com.dapfintech.loan.enums.RepaymentStatus;
+import com.dapfintech.loan.service.LoanRepaymentScheduleService;
 import com.dapfintech.loan.service.LoanService;
 import com.dapfintech.security.service.AccessControlService;
 
@@ -63,6 +67,7 @@ public class LoanServiceImpl
     private final LoanCollectionRepository collectionRepository;
 
     private final LoanRepaymentScheduleRepository repaymentScheduleRepository;
+    private final LoanRepaymentScheduleService repaymentScheduleService;
     private final AccessControlService accessControlService;
     private final AuditLogService auditLogService;
     private final UserRepository userRepository;
@@ -853,8 +858,13 @@ public class LoanServiceImpl
             marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : mName;
         }
 
-        long customerLoanCount = loanRepository.countByCustomerId(customer.getId());
-        String loanCodeStr = String.format("%s-%s-%s-%d", typePrefix, custPrefix, marketPrefix, customerLoanCount + 1);
+        String baseCode = String.format("%s-%s-%s", typePrefix, custPrefix, marketPrefix);
+        int num = 1;
+        String loanCodeStr = baseCode + "-" + num;
+        while (loanRepository.existsByLoanCode(loanCodeStr)) {
+            num++;
+            loanCodeStr = baseCode + "-" + num;
+        }
 
         Loan loan =
                 Loan.builder()
@@ -928,6 +938,7 @@ public class LoanServiceImpl
     }
 
     @Override
+    @Transactional
     public LoanResponse updateLoan(
             UUID loanId,
             UpdateLoanRequest request
@@ -997,12 +1008,20 @@ public class LoanServiceImpl
         // STATUS PROTECTION
         //----------------------------------------------------------
 
-        if (loan.getLoanStatus()
-                != LoanStatus.PENDING_APPROVAL) {
+        boolean isMasterAdmin = (currentUser.getEmail() != null && "singh.amitjadoun@gmail.com".equalsIgnoreCase(currentUser.getEmail()))
+                || (currentUser.getRole() != null && currentUser.getRole().getRoleName() != null && currentUser.getRole().getRoleName().toUpperCase().contains("MASTER"))
+                || currentUser.isAdmin();
 
-            throw new RuntimeException(
-                    "Only pending approval loans can be edited"
-            );
+        boolean isActive = loan.getLoanStatus() == LoanStatus.ACTIVE;
+
+        if (loan.getLoanStatus() != LoanStatus.PENDING_APPROVAL) {
+            if (isActive && isMasterAdmin) {
+                // Master admin allowed to edit ACTIVE loans
+            } else {
+                throw new RuntimeException(
+                        "Only pending approval loans can be edited (Master Admin can edit active loans)"
+                );
+            }
         }
 
 
@@ -1042,19 +1061,22 @@ public class LoanServiceImpl
             );
         }
 
-        if (request.getTenure() == null ||
-                request.getTenure() <= 0) {
-
-            throw new RuntimeException(
-                    "Tenure must be greater than zero"
-            );
-        }
-
-        if (request.getRepaymentFrequency() == null) {
-
-            throw new RuntimeException(
-                    "Repayment frequency is required"
-            );
+        if (request.getLoanType() == LoanType.EMERGENCY) {
+            if (request.getTenure() == null || request.getTenure() < 0) {
+                request.setTenure(0);
+            }
+            if (request.getRepaymentFrequency() == null) {
+                request.setRepaymentFrequency(com.dapfintech.loan.enums.RepaymentFrequency.EDI);
+            }
+        } else {
+            if (request.getTenure() == null || request.getTenure() <= 0) {
+                throw new RuntimeException(
+                        "Tenure must be greater than zero"
+                );
+            }
+            if (request.getRepaymentFrequency() == null) {
+                request.setRepaymentFrequency(com.dapfintech.loan.enums.RepaymentFrequency.EDI);
+            }
         }
 
 
@@ -1062,38 +1084,159 @@ public class LoanServiceImpl
         // UPDATE LOAN
         //----------------------------------------------------------
 
-        loan.setLoanType(
-                request.getLoanType()
-        );
+        LoanType newType = request.getLoanType();
+        loan.setLoanType(newType);
+        loan.setLoanAmount(request.getLoanAmount());
+        if (isActive) {
+            loan.setApprovedAmount(request.getLoanAmount());
+        }
+        loan.setInterestRate(request.getInterestRate());
+        loan.setInterestType(request.getInterestType());
+        loan.setTenure(request.getTenure());
+        loan.setRepaymentFrequency(request.getRepaymentFrequency());
 
-        loan.setLoanAmount(
-                request.getLoanAmount()
-        );
+        // Update Loan Code prefix if loan type changed
+        if (loan.getLoanCode() != null) {
+            if (newType == LoanType.EMERGENCY && loan.getLoanCode().startsWith("RLN")) {
+                loan.setLoanCode("ELN" + loan.getLoanCode().substring(3));
+            } else if (newType == LoanType.REGULAR && loan.getLoanCode().startsWith("ELN")) {
+                loan.setLoanCode("RLN" + loan.getLoanCode().substring(3));
+            }
+        }
 
-        loan.setInterestRate(
-                request.getInterestRate()
-        );
-
-        loan.setInterestType(
-                request.getInterestType()
-        );
-
-        loan.setTenure(
-                request.getTenure()
-        );
-
-        loan.setRepaymentFrequency(
-                request.getRepaymentFrequency()
-        );
-
+        Loan updatedLoan = loanRepository.save(loan);
 
         //----------------------------------------------------------
-        // SAVE
+        // RECALCULATE ACTIVE LOAN SCHEDULES & RELINK COLLECTIONS
         //----------------------------------------------------------
+        if (isActive) {
+            // A. Detach all collections
+            List<LoanCollection> collections = collectionRepository.findByLoanIdOrderByCollectionDateAsc(updatedLoan.getId());
+            for (LoanCollection col : collections) {
+                col.setRepaymentSchedule(null);
+            }
+            collectionRepository.saveAll(collections);
+            collectionRepository.flush();
 
-        Loan updatedLoan =
-                loanRepository.save(loan);
+            // B. Delete existing schedules
+            repaymentScheduleRepository.deleteByLoanId(updatedLoan.getId());
+            repaymentScheduleRepository.flush();
 
+            // C. Generate new schedules
+            if (updatedLoan.getLoanType() == LoanType.EMERGENCY) {
+                BigDecimal principal = updatedLoan.getApprovedAmount() != null ? updatedLoan.getApprovedAmount() : updatedLoan.getLoanAmount();
+                BigDecimal dailyInterest = updatedLoan.getInterestRate() != null ? updatedLoan.getInterestRate() : BigDecimal.ZERO;
+                LocalDate disDate = updatedLoan.getDisbursementDate() != null ? updatedLoan.getDisbursementDate().toLocalDate() : LocalDate.now();
+                LocalDate today = LocalDate.now();
+                List<LoanRepaymentSchedule> newSchedules = new ArrayList<>();
+
+                if (dailyInterest.compareTo(BigDecimal.ZERO) > 0) {
+                    LocalDate curr = disDate;
+                    int instNum = 1;
+                    while (!curr.isAfter(today)) {
+                        newSchedules.add(LoanRepaymentSchedule.builder()
+                                .loan(updatedLoan)
+                                .installmentNumber(instNum++)
+                                .dueDate(curr)
+                                .principalAmount(BigDecimal.ZERO)
+                                .interestAmount(dailyInterest)
+                                .installmentAmount(dailyInterest)
+                                .dueAmount(dailyInterest)
+                                .paidAmount(BigDecimal.ZERO)
+                                .outstandingAmount(dailyInterest)
+                                .repaymentStatus(RepaymentStatus.PENDING)
+                                .build());
+                        curr = curr.plusDays(1);
+                    }
+                    if (newSchedules.isEmpty()) {
+                        newSchedules.add(LoanRepaymentSchedule.builder()
+                                .loan(updatedLoan)
+                                .installmentNumber(1)
+                                .dueDate(disDate)
+                                .principalAmount(BigDecimal.ZERO)
+                                .interestAmount(dailyInterest)
+                                .installmentAmount(dailyInterest)
+                                .dueAmount(dailyInterest)
+                                .paidAmount(BigDecimal.ZERO)
+                                .outstandingAmount(dailyInterest)
+                                .repaymentStatus(RepaymentStatus.PENDING)
+                                .build());
+                    }
+                    newSchedules.add(LoanRepaymentSchedule.builder()
+                            .loan(updatedLoan)
+                            .installmentNumber(newSchedules.size() + 1)
+                            .dueDate(today)
+                            .principalAmount(principal)
+                            .interestAmount(BigDecimal.ZERO)
+                            .installmentAmount(principal)
+                            .dueAmount(principal)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(principal)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build());
+                } else {
+                    newSchedules.add(LoanRepaymentSchedule.builder()
+                            .loan(updatedLoan)
+                            .installmentNumber(1)
+                            .dueDate(today)
+                            .principalAmount(principal)
+                            .interestAmount(BigDecimal.ZERO)
+                            .installmentAmount(principal)
+                            .dueAmount(principal)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(principal)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build());
+                }
+                repaymentScheduleRepository.saveAll(newSchedules);
+                repaymentScheduleRepository.flush();
+            } else {
+                repaymentScheduleService.generateSchedule(updatedLoan.getId());
+            }
+
+            // D. Reapply collected amounts to new schedules
+            BigDecimal totalCollected = collections.stream()
+                    .map(LoanCollection::getCollectedAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (totalCollected.compareTo(BigDecimal.ZERO) > 0) {
+                List<LoanRepaymentSchedule> newScheds = repaymentScheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(updatedLoan.getId());
+                BigDecimal rem = totalCollected;
+                int colIdx = 0;
+
+                for (LoanRepaymentSchedule s : newScheds) {
+                    if (rem.compareTo(BigDecimal.ZERO) <= 0) {
+                        s.setPaidAmount(BigDecimal.ZERO);
+                        s.setOutstandingAmount(s.getInstallmentAmount());
+                        s.setRepaymentStatus(RepaymentStatus.PENDING);
+                        continue;
+                    }
+
+                    BigDecimal due = s.getInstallmentAmount() != null ? s.getInstallmentAmount() : BigDecimal.ZERO;
+                    if (rem.compareTo(due) >= 0) {
+                        s.setPaidAmount(due);
+                        s.setOutstandingAmount(BigDecimal.ZERO);
+                        s.setRepaymentStatus(RepaymentStatus.PAID);
+                        rem = rem.subtract(due);
+
+                        if (colIdx < collections.size()) {
+                            collections.get(colIdx).setRepaymentSchedule(s);
+                            colIdx++;
+                        }
+                    } else {
+                        s.setPaidAmount(rem);
+                        s.setOutstandingAmount(due.subtract(rem));
+                        s.setRepaymentStatus(RepaymentStatus.PENDING);
+                        if (colIdx < collections.size()) {
+                            collections.get(colIdx).setRepaymentSchedule(s);
+                        }
+                        rem = BigDecimal.ZERO;
+                    }
+                }
+                repaymentScheduleRepository.saveAll(newScheds);
+                collectionRepository.saveAll(collections);
+            }
+        }
 
         //----------------------------------------------------------
         // AUDIT LOG

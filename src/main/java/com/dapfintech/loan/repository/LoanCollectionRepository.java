@@ -28,6 +28,8 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
 
     List<LoanCollection> findByLoanId(UUID loanId);
 
+    List<LoanCollection> findByLoanIdOrderByCollectionDateAsc(UUID loanId);
+
     List<LoanCollection> findAllByCollectionDateBetween(java.time.LocalDateTime start, java.time.LocalDateTime end);
     
     List<LoanCollection> findAllByOrderByCollectionDateDesc();

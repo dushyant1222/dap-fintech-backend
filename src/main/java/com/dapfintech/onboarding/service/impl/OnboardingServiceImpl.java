@@ -330,12 +330,12 @@ public class OnboardingServiceImpl implements OnboardingService {
             String mName = market.getMarketName().trim().toUpperCase().replaceAll("[^A-Z]", "");
             marketPrefix = mName.length() >= 2 ? mName.substring(0, 2) : (mName.length() == 1 ? mName + "X" : "NA");
         }
-        long customerLoanCount = loanRepository.countByCustomerId(customer.getId());
-        String loanCode = String.format("%s-%s-%s-%d", typePrefix, custPrefix, marketPrefix, customerLoanCount + 1);
-
-        int codeSuffix = 1;
+        String baseCode = String.format("%s-%s-%s", typePrefix, custPrefix, marketPrefix);
+        int num = 1;
+        String loanCode = baseCode + "-" + num;
         while (loanRepository.existsByLoanCode(loanCode)) {
-            loanCode = String.format("%s-%s-%s-%d-%d", typePrefix, custPrefix, marketPrefix, customerLoanCount + 1, codeSuffix++);
+            num++;
+            loanCode = baseCode + "-" + num;
         }
 
         LocalDate disDate = req.getDisbursementDate() != null ? req.getDisbursementDate() : LocalDate.now();
@@ -386,14 +386,14 @@ public class OnboardingServiceImpl implements OnboardingService {
         Loan savedLoan = loanRepository.save(loan);
 
         // 6. Generate Historical Schedule
+        LocalDate effectiveCutoff = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
         if (isEmergency) {
             BigDecimal principal = savedLoan.getApprovedAmount();
             List<LoanRepaymentSchedule> emergencySchedules = new ArrayList<>();
             BigDecimal dailyInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
 
-            LocalDate cutoff = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
             LocalDate today = LocalDate.now();
-            LocalDate endDate = cutoff.isBefore(today) ? cutoff : today;
+            LocalDate endDate = effectiveCutoff.isBefore(today) ? effectiveCutoff : today;
 
             if (dailyInterest.compareTo(BigDecimal.ZERO) > 0) {
                 LocalDate currDate = disDate;
@@ -485,6 +485,9 @@ public class OnboardingServiceImpl implements OnboardingService {
                     s.setOutstandingAmount(BigDecimal.ZERO);
                     s.setRepaymentStatus(RepaymentStatus.PAID);
                     LocalDate pDate = s.getDueDate() != null ? s.getDueDate() : disDate;
+                    if (pDate.isAfter(effectiveCutoff)) {
+                        pDate = effectiveCutoff;
+                    }
 
                     LoanCollection col = LoanCollection.builder()
                             .loan(savedLoan)
@@ -503,6 +506,9 @@ public class OnboardingServiceImpl implements OnboardingService {
                     s.setOutstandingAmount(due.subtract(remaining));
                     s.setRepaymentStatus(RepaymentStatus.PENDING);
                     LocalDate pDate = req.getLastPaymentDate() != null ? req.getLastPaymentDate() : (s.getDueDate() != null ? s.getDueDate() : disDate);
+                    if (pDate.isAfter(effectiveCutoff)) {
+                        pDate = effectiveCutoff;
+                    }
 
                     LoanCollection col = LoanCollection.builder()
                             .loan(savedLoan)
@@ -624,7 +630,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 if (m.phoneCol == -1) m.phoneCol = c;
             } else if (h.equals("name") || h.equals("customername") || h.equals("clientname") || h.contains("borrower")) {
                 m.nameCol = c;
-            } else if (h.equals("loantype") || h.equals("type")) {
+            } else if (h.contains("loantype") || h.contains("regularem") || h.contains("emregul") || h.contains("regular") || h.contains("emergency") || h.equals("type")) {
                 m.loanTypeCol = c;
             } else if (h.contains("daily") || h.equals("dailycollection") || h.equals("edi") || h.contains("installment")) {
                 m.dailyCollectionCol = c;
@@ -677,6 +683,14 @@ public class OnboardingServiceImpl implements OnboardingService {
         // Positional fallbacks for missing columns in client format
         if (m.phoneCol == -1) m.phoneCol = 0;
         if (m.nameCol == -1) m.nameCol = 1;
+
+        if (m.loanTypeCol == -1) {
+            if (m.dailyCollectionCol == 3) {
+                m.loanTypeCol = 2;
+            } else if (m.dailyCollectionCol > 1) {
+                m.loanTypeCol = m.dailyCollectionCol - 1;
+            }
+        }
 
         if (m.loanTypeCol == -1 && m.dailyCollectionCol == -1) {
             // Check row count / layout:
@@ -766,6 +780,19 @@ public class OnboardingServiceImpl implements OnboardingService {
                 String lt = ltStr.trim().toUpperCase();
                 if (lt.contains("ELN") || lt.contains("EMERGENCY")) {
                     loanType = LoanType.EMERGENCY;
+                }
+            }
+        }
+        if (loanType == LoanType.REGULAR) {
+            int lastC = row.getLastCellNum();
+            for (int ci = 0; ci < lastC; ci++) {
+                String cVal = getCellString(row.getCell(ci));
+                if (cVal != null) {
+                    String u = cVal.trim().toUpperCase();
+                    if (u.equals("EMERGENCY") || u.startsWith("ELN")) {
+                        loanType = LoanType.EMERGENCY;
+                        break;
+                    }
                 }
             }
         }

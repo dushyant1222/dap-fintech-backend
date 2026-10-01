@@ -26,6 +26,10 @@ public interface LoanRepaymentScheduleRepository
     List<LoanRepaymentSchedule> findByRepaymentStatus(RepaymentStatus repaymentStatus);
     Long countByRepaymentStatus(
             RepaymentStatus repaymentStatus);
+
+    @Modifying
+    @Query("DELETE FROM LoanRepaymentSchedule s WHERE s.loan.id = :loanId")
+    void deleteByLoanId(@Param("loanId") UUID loanId);
     
     
     @Query(value = """
