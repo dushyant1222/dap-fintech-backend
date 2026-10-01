@@ -9,9 +9,13 @@ import java.util.List;
 
 public interface DayBookService {
     DayBookResponse getOrCreateTodayDayBook(UUID employeeId);
+    DayBookResponse getOrCreateDayBook(UUID employeeId, java.time.LocalDate date);
     DayBookResponse addTransaction(UUID employeeId, DayBookTransactionRequest request);
+    DayBookResponse addTransactionForDate(UUID employeeId, java.time.LocalDate date, DayBookTransactionRequest request);
     DayBookResponse requestClosure(UUID employeeId);
+    DayBookResponse requestClosureForDate(UUID employeeId, java.time.LocalDate date);
     DayBookResponse cancelClosure(UUID employeeId);
+    DayBookResponse cancelClosureForDate(UUID employeeId, java.time.LocalDate date);
     DayBookResponse approveClosure(UUID dayBookId);
     DayBookResponse rejectClosure(UUID dayBookId);
     DayBookResponse reopenDayBook(UUID dayBookId);

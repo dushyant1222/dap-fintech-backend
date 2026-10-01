@@ -48,44 +48,55 @@ public class DayBookServiceImpl implements DayBookService {
     @Override
     @Transactional
     public DayBookResponse getOrCreateTodayDayBook(UUID employeeId) {
-        LocalDate today = LocalDate.now();
-        Optional<DayBook> todayDayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today);
-        
-        DayBook dayBook;
-        if (todayDayBook.isPresent()) {
-            dayBook = todayDayBook.get();
-        } else {
-            dayBook = new DayBook();
-            dayBook.setEmployeeId(employeeId);
-            dayBook.setDate(today);
-            dayBook.setStatus(DayBookStatus.OPEN);
-            
-            List<DayBook> pastBooks = dayBookRepository.findByEmployeeIdOrderByDateDesc(employeeId);
-            if (!pastBooks.isEmpty()) {
-                dayBook.setOpeningBalance(pastBooks.get(0).getClosingBalance());
-            } else {
-                dayBook.setOpeningBalance(BigDecimal.ZERO);
-            }
-            
-            dayBook.setClosingBalance(calculateClosingBalance(dayBook));
-            dayBook = dayBookRepository.save(dayBook);
+        return getOrCreateDayBook(employeeId, LocalDate.now());
+    }
+
+    @Override
+    @Transactional
+    public DayBookResponse getOrCreateDayBook(UUID employeeId, LocalDate date) {
+        Optional<DayBook> existing = dayBookRepository.findByEmployeeIdAndDate(employeeId, date);
+        if (existing.isPresent()) {
+            return mapToResponse(existing.get());
         }
-        
+
+        DayBook dayBook = new DayBook();
+        dayBook.setEmployeeId(employeeId);
+        dayBook.setDate(date);
+        dayBook.setStatus(DayBookStatus.OPEN);
+
+        List<DayBook> pastBooks = dayBookRepository.findByEmployeeIdOrderByDateDesc(employeeId);
+        BigDecimal openingBal = BigDecimal.ZERO;
+        for (DayBook pb : pastBooks) {
+            if (pb.getDate().isBefore(date)) {
+                openingBal = pb.getClosingBalance() != null ? pb.getClosingBalance() : BigDecimal.ZERO;
+                break;
+            }
+        }
+        dayBook.setOpeningBalance(openingBal);
+        dayBook.setClosingBalance(calculateClosingBalance(dayBook));
+        dayBook = dayBookRepository.save(dayBook);
+
         return mapToResponse(dayBook);
     }
     
     @Override
     @Transactional
     public DayBookResponse addTransaction(UUID employeeId, DayBookTransactionRequest request) {
-        LocalDate today = LocalDate.now();
-        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today)
+        return addTransactionForDate(employeeId, LocalDate.now(), request);
+    }
+
+    @Override
+    @Transactional
+    public DayBookResponse addTransactionForDate(UUID employeeId, LocalDate date, DayBookTransactionRequest request) {
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date)
                 .orElseGet(() -> {
-                    getOrCreateTodayDayBook(employeeId);
-                    return dayBookRepository.findByEmployeeIdAndDate(employeeId, today).get();
+                    getOrCreateDayBook(employeeId, date);
+                    return dayBookRepository.findByEmployeeIdAndDate(employeeId, date).get();
                 });
                 
-        if (dayBook.getStatus() != DayBookStatus.OPEN) {
-            throw new RuntimeException("Cannot add transaction to a closed or pending daybook.");
+        boolean isCollection = "COLLECTIONS".equalsIgnoreCase(request.getType());
+        if (dayBook.getStatus() != DayBookStatus.OPEN && !isCollection) {
+            throw new RuntimeException("Cannot add non-collection transaction to a closed or pending daybook.");
         }
         
         BigDecimal amount = request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO;
@@ -151,6 +162,17 @@ public class DayBookServiceImpl implements DayBookService {
         dayBook.setClosingBalance(calculateClosingBalance(dayBook));
         dayBook = dayBookRepository.save(dayBook);
 
+        // If closed, propagate closing balance forward to next day
+        if (dayBook.getStatus() == DayBookStatus.CLOSED) {
+            Optional<DayBook> nextDayBookOpt = dayBookRepository.findByEmployeeIdAndDate(employeeId, date.plusDays(1));
+            if (nextDayBookOpt.isPresent()) {
+                DayBook nextDb = nextDayBookOpt.get();
+                nextDb.setOpeningBalance(dayBook.getClosingBalance());
+                nextDb.setClosingBalance(calculateClosingBalance(nextDb));
+                dayBookRepository.save(nextDb);
+            }
+        }
+
         // Save transaction history for dropdown details
         com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
         tx.setDayBook(dayBook);
@@ -158,7 +180,7 @@ public class DayBookServiceImpl implements DayBookService {
         tx.setType(request.getType().toUpperCase());
         tx.setAmount(amount);
         tx.setRemarks(request.getRemarks());
-        tx.setCreatedAt(java.time.LocalDateTime.now());
+        tx.setCreatedAt(date.isEqual(LocalDate.now()) ? java.time.LocalDateTime.now() : date.atTime(java.time.LocalTime.now()));
         dayBookTransactionRepository.save(tx);
 
         return mapToResponse(dayBook);
@@ -167,9 +189,14 @@ public class DayBookServiceImpl implements DayBookService {
     @Override
     @Transactional
     public DayBookResponse requestClosure(UUID employeeId) {
-        LocalDate today = LocalDate.now();
-        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today)
-                .orElseThrow(() -> new RuntimeException("Today's DayBook not found for employee"));
+        return requestClosureForDate(employeeId, LocalDate.now());
+    }
+
+    @Override
+    @Transactional
+    public DayBookResponse requestClosureForDate(UUID employeeId, LocalDate date) {
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date)
+                .orElseThrow(() -> new RuntimeException("DayBook not found for employee on " + date));
         
         if (dayBook.getStatus() != DayBookStatus.OPEN) {
             throw new RuntimeException("Daybook is already pending closure or closed.");
@@ -183,9 +210,14 @@ public class DayBookServiceImpl implements DayBookService {
     @Override
     @Transactional
     public DayBookResponse cancelClosure(UUID employeeId) {
-        LocalDate today = LocalDate.now();
-        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, today)
-                .orElseThrow(() -> new RuntimeException("Today's DayBook not found for employee"));
+        return cancelClosureForDate(employeeId, LocalDate.now());
+    }
+
+    @Override
+    @Transactional
+    public DayBookResponse cancelClosureForDate(UUID employeeId, LocalDate date) {
+        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date)
+                .orElseThrow(() -> new RuntimeException("DayBook not found for employee on " + date));
         
         if (dayBook.getStatus() != DayBookStatus.PENDING_CLOSURE) {
             throw new RuntimeException("Daybook is not pending closure.");
@@ -205,6 +237,15 @@ public class DayBookServiceImpl implements DayBookService {
         dayBook.setStatus(DayBookStatus.CLOSED);
         dayBook = dayBookRepository.save(dayBook);
         
+        // Carry forward closing balance to next day's opening balance if next day exists
+        Optional<DayBook> nextDayBookOpt = dayBookRepository.findByEmployeeIdAndDate(dayBook.getEmployeeId(), dayBook.getDate().plusDays(1));
+        if (nextDayBookOpt.isPresent()) {
+            DayBook nextDb = nextDayBookOpt.get();
+            nextDb.setOpeningBalance(dayBook.getClosingBalance());
+            nextDb.setClosingBalance(calculateClosingBalance(nextDb));
+            dayBookRepository.save(nextDb);
+        }
+
         checkAndCloseMarketDayBook(dayBook);
         
         return mapToResponse(dayBook);
@@ -354,13 +395,12 @@ public class DayBookServiceImpl implements DayBookService {
     }
     
     @Override
+    @Transactional
     public DayBookResponse getDayBookByDate(UUID employeeId, LocalDate date) {
-        DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(employeeId, date)
-                .orElseThrow(() -> new RuntimeException("DayBook not found for the given date"));
-        return mapToResponse(dayBook);
+        return getOrCreateDayBook(employeeId, date);
     }
     
-        private BigDecimal calculateClosingBalance(DayBook dayBook) {
+    private BigDecimal calculateClosingBalance(DayBook dayBook) {
         if (dayBook.getOpeningBalance() == null) dayBook.setOpeningBalance(BigDecimal.ZERO);
         if (dayBook.getCollections() == null) dayBook.setCollections(BigDecimal.ZERO);
         if (dayBook.getIncomingTransfers() == null) dayBook.setIncomingTransfers(BigDecimal.ZERO);
@@ -382,8 +422,7 @@ public class DayBookServiceImpl implements DayBookService {
                 .subtract(dayBook.getOfficeRemittance());
     }
 
-    
-        private DayBookResponse mapToResponse(DayBook dayBook) {
+    private DayBookResponse mapToResponse(DayBook dayBook) {
         DayBookResponse response = new DayBookResponse();
         response.setId(dayBook.getId());
         response.setEmployeeId(dayBook.getEmployeeId());
@@ -399,6 +438,29 @@ public class DayBookServiceImpl implements DayBookService {
         response.setOfficeRemittance(dayBook.getOfficeRemittance());
         response.setClosingBalance(dayBook.getClosingBalance());
         response.setStatus(dayBook.getStatus());
+
+        // Check if any prior daybook is unclosed
+        List<DayBook> pastBooks = dayBookRepository.findByEmployeeIdOrderByDateDesc(dayBook.getEmployeeId());
+        DayBook unclosedPast = pastBooks.stream()
+                .filter(pb -> pb.getDate().isBefore(dayBook.getDate()) && pb.getStatus() != DayBookStatus.CLOSED)
+                .findFirst()
+                .orElse(null);
+
+        if (unclosedPast != null) {
+            response.setPreviousDayClosed(false);
+            response.setUnclosedDate(unclosedPast.getDate());
+        } else {
+            LocalDate yesterday = dayBook.getDate().minusDays(1);
+            boolean yesterdayExists = pastBooks.stream().anyMatch(pb -> pb.getDate().equals(yesterday));
+            if (!yesterdayExists && dayBook.getDate().equals(LocalDate.now()) && yesterday.isAfter(LocalDate.of(2026, 9, 29))) {
+                response.setPreviousDayClosed(false);
+                response.setUnclosedDate(yesterday);
+            } else {
+                response.setPreviousDayClosed(true);
+                response.setUnclosedDate(null);
+            }
+        }
+
         return response;
     }
 

@@ -43,16 +43,41 @@ public class DayBookController {
         DayBookResponse response = dayBookService.addTransaction(employeeId, request);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/by-date/transactions")
+    public ResponseEntity<DayBookResponse> addTransactionForDate(
+            @PathVariable UUID employeeId,
+            @RequestParam("date") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            @RequestBody DayBookTransactionRequest request) {
+        DayBookResponse response = dayBookService.addTransactionForDate(employeeId, date, request);
+        return ResponseEntity.ok(response);
+    }
     
     @PutMapping("/today/request-closure")
     public ResponseEntity<DayBookResponse> requestClosure(@PathVariable UUID employeeId) {
         DayBookResponse response = dayBookService.requestClosure(employeeId);
         return ResponseEntity.ok(response);
     }
+
+    @PutMapping("/by-date/request-closure")
+    public ResponseEntity<DayBookResponse> requestClosureForDate(
+            @PathVariable UUID employeeId,
+            @RequestParam("date") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        DayBookResponse response = dayBookService.requestClosureForDate(employeeId, date);
+        return ResponseEntity.ok(response);
+    }
     
     @PutMapping("/today/cancel-closure")
     public ResponseEntity<DayBookResponse> cancelClosure(@PathVariable UUID employeeId) {
         DayBookResponse response = dayBookService.cancelClosure(employeeId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/by-date/cancel-closure")
+    public ResponseEntity<DayBookResponse> cancelClosureForDate(
+            @PathVariable UUID employeeId,
+            @RequestParam("date") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        DayBookResponse response = dayBookService.cancelClosureForDate(employeeId, date);
         return ResponseEntity.ok(response);
     }
     

@@ -1082,7 +1082,10 @@ public class LoanCollectionServiceImpl
                 dbReq.setType("COLLECTIONS");
                 dbReq.setAmount(collection.getCollectedAmount());
                 dbReq.setRemarks("EMI Collected: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
-                dayBookService.addTransaction(loggedInEmployee.getId(), dbReq);
+                java.time.LocalDate colDate = collection.getCollectionDate() != null
+                        ? collection.getCollectionDate().toLocalDate()
+                        : java.time.LocalDate.now();
+                dayBookService.addTransactionForDate(loggedInEmployee.getId(), colDate, dbReq);
             } catch(Exception e) {
                 // If it fails (e.g. daybook closed), we don't block the collection, just log it.
                 e.printStackTrace();

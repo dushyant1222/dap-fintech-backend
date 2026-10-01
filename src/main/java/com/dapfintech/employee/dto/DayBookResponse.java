@@ -23,4 +23,6 @@ public class DayBookResponse {
     private BigDecimal cashOutgoingTransfers;
     private BigDecimal closingBalance;
     private DayBookStatus status;
+    private Boolean previousDayClosed;
+    private LocalDate unclosedDate;
 }
