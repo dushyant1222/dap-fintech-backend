@@ -14,5 +14,7 @@ public interface OnboardingService {
 
     OnboardingSummaryResponse importExcel(MultipartFile file);
 
+    OnboardingSummaryResponse importExcel(MultipartFile file, java.util.UUID marketId, String marketName, java.time.LocalDate asOfDate);
+
     LoanResponse onboardSingleLoan(OnboardSingleLoanRequest request);
 }

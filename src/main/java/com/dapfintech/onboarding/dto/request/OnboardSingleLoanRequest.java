@@ -58,6 +58,8 @@ public class OnboardSingleLoanRequest {
 
     private LocalDate lastPaymentDate;
 
+    private LocalDate asOfDate;
+
     public void setLoanType(Object value) {
         if (value == null) {
             this.loanType = LoanType.REGULAR;

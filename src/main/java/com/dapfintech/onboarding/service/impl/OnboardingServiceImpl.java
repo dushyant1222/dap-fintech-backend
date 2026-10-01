@@ -165,9 +165,37 @@ public class OnboardingServiceImpl implements OnboardingService {
 
     @Override
     public OnboardingSummaryResponse importExcel(MultipartFile file) {
+        return importExcel(file, null, null, null);
+    }
+
+    @Override
+    public OnboardingSummaryResponse importExcel(MultipartFile file, UUID defaultMarketId, String defaultMarketName, LocalDate asOfDate) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Upload file is empty");
         }
+
+        // 1. Resolve Target Market if provided
+        Market targetMarket = null;
+        if (defaultMarketId != null) {
+            targetMarket = marketRepository.findById(defaultMarketId).orElse(null);
+        }
+        if (targetMarket == null && defaultMarketName != null && !defaultMarketName.trim().isEmpty()) {
+            String mName = defaultMarketName.trim();
+            targetMarket = marketRepository.findByMarketNameIgnoreCase(mName).orElse(null);
+            if (targetMarket == null) {
+                String mCode = "MKT-" + (mName.length() >= 3 ? mName.substring(0, 3).toUpperCase() : mName.toUpperCase());
+                targetMarket = Market.builder()
+                        .marketName(mName)
+                        .marketCode(mCode)
+                        .status(MarketStatus.ACTIVE)
+                        .build();
+                targetMarket = marketRepository.save(targetMarket);
+            }
+        }
+
+        // 2. Resolve Effective As-Of Date (defaults to 2026-09-29)
+        final LocalDate effectiveAsOfDate = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
+        final Market resolvedMarket = targetMarket;
 
         List<String> errors = new ArrayList<>();
         List<String> createdLoanCodes = new ArrayList<>();
@@ -191,8 +219,8 @@ public class OnboardingServiceImpl implements OnboardingService {
                 totalRows++;
 
                 try {
-                    OnboardSingleLoanRequest req = parseRow(row, r + 1, mapping);
-                    Loan createdLoan = transactionTemplate.execute(status -> processSingleOnboarding(req));
+                    OnboardSingleLoanRequest req = parseRow(row, r + 1, mapping, resolvedMarket, effectiveAsOfDate);
+                    Loan createdLoan = transactionTemplate.execute(status -> processSingleOnboarding(req, resolvedMarket, effectiveAsOfDate));
                     if (createdLoan != null) {
                         createdLoanCodes.add(createdLoan.getLoanCode());
                         successCount++;
@@ -221,11 +249,12 @@ public class OnboardingServiceImpl implements OnboardingService {
     @Override
     @Transactional
     public LoanResponse onboardSingleLoan(OnboardSingleLoanRequest request) {
-        Loan loan = processSingleOnboarding(request);
+        LocalDate effectiveDate = request.getAsOfDate() != null ? request.getAsOfDate() : LocalDate.of(2026, 9, 29);
+        Loan loan = processSingleOnboarding(request, null, effectiveDate);
         return loanMapper.toResponse(loan);
     }
 
-    private Loan processSingleOnboarding(OnboardSingleLoanRequest req) {
+    private Loan processSingleOnboarding(OnboardSingleLoanRequest req, Market defaultMarket, LocalDate asOfDate) {
         // 1. Resolve or Create Market
         Market market = null;
         if (req.getMarketName() != null && !req.getMarketName().trim().isEmpty()) {
@@ -240,6 +269,8 @@ public class OnboardingServiceImpl implements OnboardingService {
                         .build();
                 market = marketRepository.save(market);
             }
+        } else if (defaultMarket != null) {
+            market = defaultMarket;
         }
 
         // 2. Resolve Collector / Employee
@@ -360,12 +391,15 @@ public class OnboardingServiceImpl implements OnboardingService {
             List<LoanRepaymentSchedule> emergencySchedules = new ArrayList<>();
             BigDecimal dailyInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
 
+            LocalDate cutoff = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
+            LocalDate today = LocalDate.now();
+            LocalDate endDate = cutoff.isBefore(today) ? cutoff : today;
+
             if (dailyInterest.compareTo(BigDecimal.ZERO) > 0) {
                 LocalDate currDate = disDate;
-                LocalDate today = LocalDate.now();
                 int instNum = 1;
 
-                while (!currDate.isAfter(today)) {
+                while (!currDate.isAfter(endDate)) {
                     LoanRepaymentSchedule sched = LoanRepaymentSchedule.builder()
                             .loan(savedLoan)
                             .installmentNumber(instNum++)
@@ -401,7 +435,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 emergencySchedules.add(LoanRepaymentSchedule.builder()
                         .loan(savedLoan)
                         .installmentNumber(emergencySchedules.size() + 1)
-                        .dueDate(LocalDate.now())
+                        .dueDate(endDate)
                         .principalAmount(principal)
                         .interestAmount(BigDecimal.ZERO)
                         .installmentAmount(principal)
@@ -414,7 +448,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 emergencySchedules.add(LoanRepaymentSchedule.builder()
                         .loan(savedLoan)
                         .installmentNumber(1)
-                        .dueDate(LocalDate.now())
+                        .dueDate(endDate)
                         .principalAmount(principal)
                         .interestAmount(BigDecimal.ZERO)
                         .installmentAmount(principal)
@@ -709,9 +743,9 @@ public class OnboardingServiceImpl implements OnboardingService {
         return m;
     }
 
-    private OnboardSingleLoanRequest parseRow(Row row, int rowNum, ColumnMapping m) {
+    private OnboardSingleLoanRequest parseRow(Row row, int rowNum, ColumnMapping m, Market defaultMarket, LocalDate asOfDate) {
         if (m.isLegacyTemplate) {
-            return parseLegacyRow(row, rowNum, m);
+            return parseLegacyRow(row, rowNum, m, defaultMarket, asOfDate);
         }
 
         String custName = m.nameCol != -1 ? getCellString(row.getCell(m.nameCol)) : null;
@@ -789,6 +823,8 @@ public class OnboardingServiceImpl implements OnboardingService {
             received = BigDecimal.ZERO;
         }
 
+        LocalDate effectiveCutoff = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
+
         LocalDate lastPaymentDate = null;
         if (m.closeDateCol != -1 && received.compareTo(totalAmount) >= 0) {
             lastPaymentDate = parseDate(row.getCell(m.closeDateCol));
@@ -797,13 +833,19 @@ public class OnboardingServiceImpl implements OnboardingService {
             if (dailyCollection.compareTo(BigDecimal.ZERO) > 0) {
                 int paidDays = received.divide(dailyCollection, 0, RoundingMode.DOWN).intValue();
                 lastPaymentDate = disDate.plusDays(Math.max(0, paidDays - 1));
+                if (lastPaymentDate.isAfter(effectiveCutoff)) {
+                    lastPaymentDate = effectiveCutoff;
+                }
             } else {
-                lastPaymentDate = disDate;
+                lastPaymentDate = disDate.isAfter(effectiveCutoff) ? disDate : effectiveCutoff;
             }
         }
 
         String address = m.addressCol != -1 ? getCellString(row.getCell(m.addressCol)) : "";
         String marketName = m.marketCol != -1 ? getCellString(row.getCell(m.marketCol)) : "";
+        if ((marketName == null || marketName.trim().isEmpty()) && defaultMarket != null) {
+            marketName = defaultMarket.getMarketName();
+        }
         String collectorMobile = m.collectorCol != -1 ? cleanMobileNumber(getCellString(row.getCell(m.collectorCol))) : "";
 
         BigDecimal interestRate = loanType == LoanType.EMERGENCY ? dailyCollection : BigDecimal.ZERO;
@@ -824,10 +866,11 @@ public class OnboardingServiceImpl implements OnboardingService {
                 .repaymentFrequency(RepaymentFrequency.EDI)
                 .totalCollectedSoFar(received)
                 .lastPaymentDate(lastPaymentDate)
+                .asOfDate(effectiveCutoff)
                 .build();
     }
 
-    private OnboardSingleLoanRequest parseLegacyRow(Row row, int rowNum, ColumnMapping m) {
+    private OnboardSingleLoanRequest parseLegacyRow(Row row, int rowNum, ColumnMapping m, Market defaultMarket, LocalDate asOfDate) {
         String custName = getCellString(row.getCell(m.nameCol));
         if (custName == null || custName.trim().isEmpty()) {
             throw new IllegalArgumentException("Customer Name is required");
@@ -840,6 +883,9 @@ public class OnboardingServiceImpl implements OnboardingService {
 
         String address = m.addressCol != -1 ? getCellString(row.getCell(m.addressCol)) : "";
         String marketName = m.marketCol != -1 ? getCellString(row.getCell(m.marketCol)) : "";
+        if ((marketName == null || marketName.trim().isEmpty()) && defaultMarket != null) {
+            marketName = defaultMarket.getMarketName();
+        }
         String collectorMobile = m.collectorCol != -1 ? cleanMobileNumber(getCellString(row.getCell(m.collectorCol))) : "";
 
         LoanType loanType = LoanType.REGULAR;
@@ -890,6 +936,8 @@ public class OnboardingServiceImpl implements OnboardingService {
         BigDecimal disbursed = m.disbursedCol != -1 ? getCellBigDecimal(row.getCell(m.disbursedCol)) : principal;
         if (disbursed == null || disbursed.compareTo(BigDecimal.ZERO) <= 0) disbursed = principal;
 
+        LocalDate effectiveCutoff = asOfDate != null ? asOfDate : LocalDate.of(2026, 9, 29);
+
         return OnboardSingleLoanRequest.builder()
                 .customerName(custName)
                 .mobileNumber(mobile)
@@ -906,6 +954,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                 .repaymentFrequency(freq)
                 .totalCollectedSoFar(collected)
                 .lastPaymentDate(lastPaymentDate)
+                .asOfDate(effectiveCutoff)
                 .build();
     }
 

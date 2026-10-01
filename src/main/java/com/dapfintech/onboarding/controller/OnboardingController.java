@@ -74,10 +74,13 @@ public class OnboardingController {
 
     @PostMapping(value = "/import-excel", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<OnboardingSummaryResponse>> importExcel(
-            @RequestParam("file") MultipartFile file
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "marketId", required = false) java.util.UUID marketId,
+            @RequestParam(value = "marketName", required = false) String marketName,
+            @RequestParam(value = "asOfDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate asOfDate
     ) {
         checkOnboardingPermission();
-        OnboardingSummaryResponse response = onboardingService.importExcel(file);
+        OnboardingSummaryResponse response = onboardingService.importExcel(file, marketId, marketName, asOfDate);
         return ResponseEntity.ok(
                 ApiResponse.<OnboardingSummaryResponse>builder()
                         .success(true)
