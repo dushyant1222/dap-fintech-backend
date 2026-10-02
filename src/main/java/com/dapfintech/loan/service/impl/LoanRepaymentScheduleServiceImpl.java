@@ -468,6 +468,11 @@ public class LoanRepaymentScheduleServiceImpl
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
+        // For EMERGENCY loans: ensure schedules are dynamically generated up to today!
+        if (loan.getLoanType() == LoanType.EMERGENCY && loan.getLoanStatus() == LoanStatus.ACTIVE) {
+            ensureEmergencySchedulesForLoan(loan);
+        }
+
         List<LoanRepaymentSchedule> all = scheduleRepository
                 .findByLoanIdOrderByInstallmentNumberAsc(loanId);
 
@@ -486,54 +491,61 @@ public class LoanRepaymentScheduleServiceImpl
                 .toList();
     }
 
+    private void ensureEmergencySchedulesForLoan(Loan loan) {
+        BigDecimal dailyInterest = loan.getInterestRate() != null ? loan.getInterestRate() : BigDecimal.ZERO;
+        LocalDate today = LocalDate.now();
+
+        List<LoanRepaymentSchedule> existingSchedules =
+                scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
+
+        LocalDate lastEntryDate = existingSchedules.stream()
+                .map(LoanRepaymentSchedule::getDueDate)
+                .max(LocalDate::compareTo)
+                .orElse(loan.getDisbursementDate() != null
+                        ? loan.getDisbursementDate().toLocalDate().minusDays(1)
+                        : today.minusDays(1));
+
+        if (!lastEntryDate.isBefore(today)) {
+            return;
+        }
+
+        int nextInstallment = existingSchedules.size() + 1;
+        List<LoanRepaymentSchedule> toSave = new ArrayList<>();
+        LocalDate fillDate = lastEntryDate.plusDays(1);
+        while (!fillDate.isAfter(today)) {
+            final LocalDate checkDate = fillDate;
+            boolean alreadyExists = existingSchedules.stream()
+                    .anyMatch(s -> s.getDueDate().equals(checkDate));
+
+            if (!alreadyExists) {
+                LoanRepaymentSchedule schedule = LoanRepaymentSchedule.builder()
+                        .loan(loan)
+                        .installmentNumber(nextInstallment++)
+                        .dueDate(checkDate)
+                        .principalAmount(BigDecimal.ZERO)
+                        .interestAmount(dailyInterest)
+                        .installmentAmount(dailyInterest)
+                        .dueAmount(dailyInterest)
+                        .paidAmount(BigDecimal.ZERO)
+                        .outstandingAmount(dailyInterest)
+                        .repaymentStatus(RepaymentStatus.PENDING)
+                        .build();
+
+                toSave.add(schedule);
+            }
+            fillDate = fillDate.plusDays(1);
+        }
+
+        if (!toSave.isEmpty()) {
+            scheduleRepository.saveAll(toSave);
+        }
+    }
+
     @Scheduled(cron = "0 1 0 * * ?")
     public void generateDailyEmergencySchedules() {
         List<Loan> emergencyLoans = loanRepository.findByLoanTypeAndLoanStatus(LoanType.EMERGENCY, LoanStatus.ACTIVE);
-        LocalDate today = LocalDate.now();
-
         for (Loan loan : emergencyLoans) {
-            // Daily interest is fixed amount per day stored in interestRate
-            BigDecimal dailyInterest = loan.getInterestRate() != null ? loan.getInterestRate() : BigDecimal.ZERO;
-
-            List<LoanRepaymentSchedule> existingSchedules =
-                    scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
-
-            // Find the last date that has an entry
-            LocalDate lastEntryDate = existingSchedules.stream()
-                    .map(LoanRepaymentSchedule::getDueDate)
-                    .max(LocalDate::compareTo)
-                    .orElse(loan.getDisbursementDate() != null
-                            ? loan.getDisbursementDate().toLocalDate().minusDays(1)
-                            : today.minusDays(1));
-
-            int nextInstallment = existingSchedules.size() + 1;
-
-            // Backfill any missed days (e.g. server downtime) AND add today
-            LocalDate fillDate = lastEntryDate.plusDays(1);
-            while (!fillDate.isAfter(today)) {
-                final LocalDate checkDate = fillDate;
-                boolean alreadyExists = existingSchedules.stream()
-                        .anyMatch(s -> s.getDueDate().equals(checkDate));
-
-                if (!alreadyExists) {
-                    LoanRepaymentSchedule schedule = LoanRepaymentSchedule.builder()
-                            .loan(loan)
-                            .installmentNumber(nextInstallment)
-                            .dueDate(checkDate)
-                            .principalAmount(BigDecimal.ZERO)
-                            .interestAmount(dailyInterest)
-                            .installmentAmount(dailyInterest)
-                            .dueAmount(dailyInterest)
-                            .paidAmount(BigDecimal.ZERO)
-                            .outstandingAmount(dailyInterest)
-                            .repaymentStatus(RepaymentStatus.PENDING)
-                            .build();
-
-                    scheduleRepository.save(schedule);
-                    nextInstallment++;
-                }
-                fillDate = fillDate.plusDays(1);
-            }
+            ensureEmergencySchedulesForLoan(loan);
         }
     }
 }

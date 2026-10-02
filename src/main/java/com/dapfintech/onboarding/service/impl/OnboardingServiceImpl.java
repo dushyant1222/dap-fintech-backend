@@ -424,7 +424,7 @@ public class OnboardingServiceImpl implements OnboardingService {
             BigDecimal dailyInterest = savedLoan.getInterestRate() != null ? savedLoan.getInterestRate() : BigDecimal.ZERO;
 
             LocalDate today = LocalDate.now();
-            LocalDate endDate = effectiveCutoff.isBefore(today) ? effectiveCutoff : today;
+            LocalDate endDate = today;
 
             if (dailyInterest.compareTo(BigDecimal.ZERO) > 0) {
                 LocalDate currDate = disDate;
