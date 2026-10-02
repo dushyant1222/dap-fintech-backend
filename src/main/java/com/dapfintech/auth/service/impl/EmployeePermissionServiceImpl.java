@@ -22,6 +22,7 @@ import com.dapfintech.auth.repository.EmployeePermissionRepository;
 import com.dapfintech.auth.repository.PermissionRepository;
 import com.dapfintech.auth.repository.UserRepository;
 import com.dapfintech.auth.service.EmployeePermissionService;
+import com.dapfintech.security.utils.SecurityUtils;
 
 import lombok.RequiredArgsConstructor;
 
@@ -41,6 +42,8 @@ public class EmployeePermissionServiceImpl
             employeePermissionMapper;
     
     private final AuditLogService auditLogService;
+    
+    private final SecurityUtils securityUtils;
 
     // =====================================================
     // GET ALL PERMISSIONS FOR ONE EMPLOYEE
@@ -125,6 +128,13 @@ public class EmployeePermissionServiceImpl
                 employeeId
         );
 
+        if (employee.getRole().getRoleName().equalsIgnoreCase("ADMIN")) {
+            User currentUser = securityUtils.getCurrentUser();
+            if (currentUser == null || !currentUser.isMasterAdmin()) {
+                throw new org.springframework.security.access.AccessDeniedException("Only Master Admin can configure Admin permissions.");
+            }
+        }
+
         if (request == null ||
                 request.getPermissions() == null) {
 
@@ -204,8 +214,16 @@ public class EmployeePermissionServiceImpl
             return false;
         }
 
+        User user = userRepository.findById(employeeId).orElse(null);
+        if (user != null && user.isMasterAdmin()) {
+            return true;
+        }
+
         List<EmployeePermission> assigned = employeePermissionRepository.findByEmployeeId(employeeId);
         if (assigned.isEmpty()) {
+            if (user != null && user.isAdmin()) {
+                return true;
+            }
             String key = permissionKey.toUpperCase();
             return !key.contains("DELETE") && !key.equals("GPS_REQUIRED") && !key.equals("CAMERA_REQUIRED");
         }
@@ -218,7 +236,7 @@ public class EmployeePermissionServiceImpl
     }
 
     // =====================================================
-    // GET AND VALIDATE EMPLOYEE
+    // GET AND VALIDATE EMPLOYEE / ADMIN
     // =====================================================
 
     private User getEmployee(
@@ -232,21 +250,18 @@ public class EmployeePermissionServiceImpl
                         )
                         .orElseThrow(
                                 () -> new RuntimeException(
-                                        "Employee not found"
+                                        "User not found"
                                 )
                         );
 
         if (employee.getRole() == null ||
-                employee.getRole().getRoleName() == null ||
-                !employee.getRole()
-                        .getRoleName()
-                        .equalsIgnoreCase(
-                                "EMPLOYEE"
-                        )) {
+                employee.getRole().getRoleName() == null) {
+            throw new RuntimeException("Selected user has no assigned role");
+        }
 
-            throw new RuntimeException(
-                    "Selected user is not an employee"
-            );
+        String role = employee.getRole().getRoleName().trim().toUpperCase();
+        if (!role.equals("EMPLOYEE") && !role.equals("ADMIN")) {
+            throw new RuntimeException("Permissions can only be managed for Employees and Admins");
         }
 
         return employee;

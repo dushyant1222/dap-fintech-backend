@@ -466,9 +466,11 @@ public class EmployeeServiceImpl implements EmployeeService {
 	public List<EmployeeResponse> getTransferReceivers() {
 	    List<User> employees = userRepository.findByRoleRoleName("EMPLOYEE");
 	    List<User> admins = userRepository.findByRoleRoleName("ADMIN");
+	    List<User> masterAdmins = userRepository.findByRoleRoleName("MASTER_ADMIN");
 	    List<User> all = new java.util.ArrayList<>();
 	    all.addAll(employees);
 	    all.addAll(admins);
+	    all.addAll(masterAdmins);
 	    return all.stream()
 	            .map(employeeMapper::toResponse)
 	            .toList();

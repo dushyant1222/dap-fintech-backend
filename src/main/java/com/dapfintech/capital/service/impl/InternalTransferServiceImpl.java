@@ -98,7 +98,11 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         InternalTransfer transfer = internalTransferRepository.findById(transferId)
                 .orElseThrow(() -> new RuntimeException("Transfer not found"));
                 
-        if (!transfer.getReceiver().getId().equals(currentUserId)) {
+        User currentUser = securityUtils.getCurrentUser();
+        boolean isReceiver = transfer.getReceiver().getId().equals(currentUserId);
+        boolean isOfficeRemitAdmin = "OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory()) && currentUser != null && currentUser.isAdmin();
+        
+        if (!isReceiver && !isOfficeRemitAdmin) {
             throw new RuntimeException("Only the receiver can accept this transfer");
         }
         
@@ -236,7 +240,11 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         InternalTransfer transfer = internalTransferRepository.findById(transferId)
                 .orElseThrow(() -> new RuntimeException("Transfer not found"));
                 
-        if (!transfer.getReceiver().getId().equals(currentUserId)) {
+        User currentUser = securityUtils.getCurrentUser();
+        boolean isReceiver = transfer.getReceiver().getId().equals(currentUserId);
+        boolean isOfficeRemitAdmin = "OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory()) && currentUser != null && currentUser.isAdmin();
+        
+        if (!isReceiver && !isOfficeRemitAdmin) {
             throw new RuntimeException("Only the receiver can reject this transfer");
         }
         

@@ -70,6 +70,10 @@ public class User  extends BaseEntity{
 		return !r.equals("EMPLOYEE") && !r.equals("FIELD_AGENT") && !r.equals("COLLECTOR");
 	}
 
+	public boolean isMasterAdmin() {
+		return role != null && role.getRoleName() != null && role.getRoleName().trim().equalsIgnoreCase("MASTER_ADMIN");
+	}
+
 	public boolean isEmployee() {
 		return !isAdmin();
 	}

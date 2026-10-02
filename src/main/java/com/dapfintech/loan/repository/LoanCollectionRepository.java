@@ -132,7 +132,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		      WHERE s2.loan_id = l.id 
     		      AND s2.repayment_status != 'PAID'
     		  )
-    		ORDER BY c.customer_code, c.first_name
+    		ORDER BY l.created_at ASC, l.id ASC
     		""", nativeQuery = true)
     		List<TodayScheduleProjection> getTodaySchedule();
     
@@ -299,7 +299,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     		      WHERE s2.loan_id = l.id 
     		      AND s2.repayment_status != 'PAID'
     		  )
-    		ORDER BY c.customer_code, c.first_name
+    		ORDER BY l.created_at ASC, l.id ASC
     		""", nativeQuery = true)
     		List<TodayScheduleProjection>
     		getTodayScheduleByMarket(

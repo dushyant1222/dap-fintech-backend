@@ -18,10 +18,10 @@ public class SecurityUtils {
     private final UserRepository userRepository;
 
     /**
-     * Extracts the UUID of the currently authenticated user from the Security Context.
-     * @return UUID of the current user
+     * Extracts the User entity of the currently authenticated user from the Security Context.
+     * @return User entity of the current user
      */
-    public UUID getCurrentUserId() {
+    public User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
@@ -35,10 +35,15 @@ public class SecurityUtils {
             username = authentication.getPrincipal().toString();
         }
 
-        // Assuming your JWT uses the mobile number as the subject/username
-        User user = userRepository.findByMobileNumber(username)
+        return userRepository.findByMobileNumber(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found in database"));
+    }
 
-        return user.getId();
+    /**
+     * Extracts the UUID of the currently authenticated user from the Security Context.
+     * @return UUID of the current user
+     */
+    public UUID getCurrentUserId() {
+        return getCurrentUser().getId();
     }
 }

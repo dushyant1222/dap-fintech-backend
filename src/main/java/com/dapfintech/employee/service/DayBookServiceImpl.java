@@ -284,13 +284,14 @@ public class DayBookServiceImpl implements DayBookService {
             case "OFFICE_REMITTANCE":
                 dayBook.setOfficeRemittance(dayBook.getOfficeRemittance().add(amount));
                 
-                // Trigger internal transfer to admin
+                // Trigger internal transfer to master admin
                 User employee = userRepository.findById(employeeId).orElse(null);
-                User admin = userRepository.findByRoleRoleName("ADMIN").stream().findFirst().orElse(null);
-                if (employee != null && admin != null) {
+                User masterAdmin = userRepository.findByRoleRoleName("MASTER_ADMIN").stream().findFirst()
+                        .orElseGet(() -> userRepository.findByRoleRoleName("ADMIN").stream().findFirst().orElse(null));
+                if (employee != null && masterAdmin != null) {
                     InternalTransfer transfer = InternalTransfer.builder()
                             .sender(employee)
-                            .receiver(admin)
+                            .receiver(masterAdmin)
                             .amount(amount)
                             .transferDate(java.time.LocalDateTime.now())
                             .status(TransferStatus.PENDING)
