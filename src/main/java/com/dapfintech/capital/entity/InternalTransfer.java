@@ -7,6 +7,7 @@ import java.util.UUID;
 import com.dapfintech.auth.entity.User;
 import com.dapfintech.capital.enums.TransferStatus;
 import com.dapfintech.common.base.BaseEntity;
+import com.dapfintech.market.entity.Market;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,7 +19,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -47,6 +47,14 @@ public class InternalTransfer extends BaseEntity {
     @JoinColumn(name = "receiver_id", nullable = false)
     private User receiver;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_market_id")
+    private Market senderMarket;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "receiver_market_id")
+    private Market receiverMarket;
+
     @Column(name = "amount", nullable = false)
     private BigDecimal amount;
 
@@ -56,6 +64,7 @@ public class InternalTransfer extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "transfer_mode")
+    @Builder.Default
     private com.dapfintech.capital.enums.TransferMode transferMode = com.dapfintech.capital.enums.TransferMode.ONLINE;
 
     @Column(name = "transfer_date", nullable = false)
@@ -67,4 +76,3 @@ public class InternalTransfer extends BaseEntity {
     @Column(name = "remarks")
     private String remarks;
 }
-

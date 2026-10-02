@@ -24,4 +24,8 @@ public class EmployeeResponse {
     private String role;
 
     private UserStatus status;
+
+    private UUID marketId;
+
+    private String marketName;
 }

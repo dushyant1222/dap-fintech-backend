@@ -15,6 +15,8 @@ public class InternalTransferResponse {
     private String senderName;
     private UUID receiverId;
     private String receiverName;
+    private String senderMarketName;
+    private String receiverMarketName;
     private BigDecimal amount;
     private TransferStatus status;
     private LocalDateTime transferDate;

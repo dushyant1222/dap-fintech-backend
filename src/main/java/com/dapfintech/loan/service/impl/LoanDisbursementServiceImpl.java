@@ -128,12 +128,14 @@ public class LoanDisbursementServiceImpl
         loanDisbursementRepository
                 .save(disbursement);
 
+        java.time.LocalDate activeDate = dayBookService.getActiveDayBookDate(loggedInUser.getId());
+        LocalDateTime disDate = activeDate.atTime(java.time.LocalTime.now());
+
         loan.setDisbursedAmount(
                 netDisbursedAmount
         );
 
-        loan.setDisbursementDate(
-        	    LocalDateTime.now());
+        loan.setDisbursementDate(disDate);
 
         loan.setLoanStatus(
                 LoanStatus.ACTIVE
@@ -146,13 +148,14 @@ public class LoanDisbursementServiceImpl
                 loan.getId()
         );
 
-        if (!loggedInUser.isAdmin()) {
+        User responsibleUser = !loggedInUser.isAdmin() ? loggedInUser : (loan.getCreatedBy() != null ? loan.getCreatedBy() : null);
+        if (responsibleUser != null) {
             try {
                 com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
                 dbReq.setType("LOANS_DISBURSED");
                 dbReq.setAmount(netDisbursedAmount);
                 dbReq.setRemarks("New Loan: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
-                dayBookService.addTransaction(loggedInUser.getId(), dbReq);
+                dayBookService.addTransactionForDate(responsibleUser.getId(), activeDate, dbReq);
             } catch(Exception e) {
                 e.printStackTrace();
             }

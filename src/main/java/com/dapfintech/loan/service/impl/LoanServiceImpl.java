@@ -74,6 +74,7 @@ public class LoanServiceImpl
     private final LoanChargeRepository loanChargeRepository;
     private final EmployeeMarketAssignmentRepository assignmentRepository;
     private final com.dapfintech.notification.service.NotificationService notificationService;
+    private final com.dapfintech.employee.service.DayBookService dayBookService;
     
     @Override
     public Page<LoanResponse> filterLoans(
@@ -1271,6 +1272,15 @@ public class LoanServiceImpl
                                         "Loan not found"
                                 )
                         );
+
+        // Clean up DayBook transactions and update DayBook totals
+        if (loan.getLoanCode() != null) {
+            try {
+                dayBookService.cleanDayBookForDeletedLoan(loan.getLoanCode(), loanId);
+            } catch (Exception e) {
+                // Non-fatal
+            }
+        }
 
         // Delete all child entities in foreign-key order
         loanRepository.deleteCollectionsByLoanId(loanId);

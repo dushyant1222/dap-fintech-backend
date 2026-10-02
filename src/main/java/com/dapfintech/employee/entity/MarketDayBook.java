@@ -35,6 +35,9 @@ public class MarketDayBook extends BaseEntity {
     @Column(name = "total_incoming_transfers")
     private BigDecimal totalIncomingTransfers = BigDecimal.ZERO;
 
+    @Column(name = "total_cash_incoming_transfers")
+    private BigDecimal totalCashIncomingTransfers = BigDecimal.ZERO;
+
     @Column(name = "total_spends")
     private BigDecimal totalSpends = BigDecimal.ZERO;
 
@@ -43,6 +46,9 @@ public class MarketDayBook extends BaseEntity {
 
     @Column(name = "total_outgoing_transfers")
     private BigDecimal totalOutgoingTransfers = BigDecimal.ZERO;
+
+    @Column(name = "total_cash_outgoing_transfers")
+    private BigDecimal totalCashOutgoingTransfers = BigDecimal.ZERO;
 
     @Column(name = "total_office_remittance")
     private BigDecimal totalOfficeRemittance = BigDecimal.ZERO;

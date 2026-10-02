@@ -1,6 +1,7 @@
 package com.dapfintech.employee.repository;
 
 import com.dapfintech.employee.entity.DayBook;
+import com.dapfintech.employee.enums.DayBookStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,5 +15,7 @@ public interface DayBookRepository extends JpaRepository<DayBook, UUID> {
     Optional<DayBook> findByEmployeeIdAndDate(UUID employeeId, LocalDate date);
     List<DayBook> findByEmployeeIdOrderByDateDesc(UUID employeeId);
     List<DayBook> findByEmployeeIdOrderByDateAsc(UUID employeeId);
-    List<DayBook> findByDateAndStatusNot(LocalDate date, com.dapfintech.employee.enums.DayBookStatus status);
+    List<DayBook> findByEmployeeIdAndStatusOrderByDateDesc(UUID employeeId, DayBookStatus status);
+    List<DayBook> findByEmployeeIdAndStatus(UUID employeeId, DayBookStatus status);
+    List<DayBook> findByDateAndStatusNot(LocalDate date, DayBookStatus status);
 }

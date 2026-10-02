@@ -975,11 +975,17 @@ public class LoanCollectionServiceImpl
             }
         }
 
-        java.time.LocalDateTime colDateTime = request.getCollectionDate() != null
-                ? request.getCollectionDate()
-                : java.time.LocalDateTime.now();
-        if (colDateTime.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)) {
-            colDateTime = colDateTime.toLocalDate().atTime(java.time.LocalTime.now());
+        java.time.LocalDateTime colDateTime;
+        if (request.getCollectionDate() != null) {
+            colDateTime = request.getCollectionDate();
+            if (colDateTime.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)) {
+                colDateTime = colDateTime.toLocalDate().atTime(java.time.LocalTime.now());
+            }
+        } else {
+            java.time.LocalDate activeDate = dayBookService.getActiveDayBookDate(
+                    loggedInEmployee != null ? loggedInEmployee.getId() : null
+            );
+            colDateTime = activeDate.atTime(java.time.LocalTime.now());
         }
 
         // Determine employee for attribution

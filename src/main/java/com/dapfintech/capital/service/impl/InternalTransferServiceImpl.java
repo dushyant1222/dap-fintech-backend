@@ -3,6 +3,7 @@ package com.dapfintech.capital.service.impl;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -25,6 +26,9 @@ import com.dapfintech.employee.entity.DayBookTransaction;
 import com.dapfintech.employee.repository.DayBookRepository;
 import com.dapfintech.employee.repository.DayBookTransactionRepository;
 import com.dapfintech.employee.service.DayBookService;
+import com.dapfintech.market.entity.EmployeeMarketAssignment;
+import com.dapfintech.market.entity.Market;
+import com.dapfintech.market.repository.EmployeeMarketAssignmentRepository;
 import com.dapfintech.security.utils.SecurityUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -38,6 +42,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     private final SecurityUtils securityUtils;
     private final DayBookRepository dayBookRepository;
     private final DayBookTransactionRepository dayBookTransactionRepository;
+    private final EmployeeMarketAssignmentRepository assignmentRepository;
 
     @Lazy
     @Autowired
@@ -49,11 +54,18 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         UUID currentUserId = securityUtils.getCurrentUserId();
         User sender = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new RuntimeException("Sender not found"));
-                
+
         User receiver = userRepository.findById(request.getReceiverId())
                 .orElseThrow(() -> new RuntimeException("Receiver not found"));
 
-        LocalDateTime txDate = LocalDateTime.now();
+        // Resolve active markets
+        Market senderMarket = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(sender.getId())
+                .map(EmployeeMarketAssignment::getMarket).orElse(null);
+        Market receiverMarket = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(receiver.getId())
+                .map(EmployeeMarketAssignment::getMarket).orElse(null);
+
+        // Date resolution: if transferDate is explicitly specified, use it. Otherwise use active sequential daybook date!
+        LocalDateTime txDate;
         if (request.getTransferDate() != null && !request.getTransferDate().trim().isEmpty()) {
             try {
                 String dStr = request.getTransferDate().trim();
@@ -64,20 +76,26 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                         txDate = LocalDateTime.parse(dStr);
                     }
                 } else {
-                    txDate = LocalDate.parse(dStr).atTime(12, 0);
+                    txDate = LocalDate.parse(dStr).atTime(LocalTime.now());
                 }
             } catch (Exception e) {
                 try {
                     txDate = java.time.OffsetDateTime.parse(request.getTransferDate()).toLocalDateTime();
                 } catch (Exception ex) {
-                    txDate = LocalDateTime.now();
+                    LocalDate activeDate = dayBookService.getActiveDayBookDate(sender.getId());
+                    txDate = activeDate.atTime(LocalTime.now());
                 }
             }
+        } else {
+            LocalDate activeDate = dayBookService.getActiveDayBookDate(sender.getId());
+            txDate = activeDate.atTime(LocalTime.now());
         }
 
         InternalTransfer transfer = InternalTransfer.builder()
                 .sender(sender)
                 .receiver(receiver)
+                .senderMarket(senderMarket)
+                .receiverMarket(receiverMarket)
                 .amount(request.getAmount())
                 .status(TransferStatus.PENDING)
                 .transferDate(txDate)
@@ -94,33 +112,38 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     @Transactional
     public InternalTransferResponse acceptTransfer(UUID transferId) {
         UUID currentUserId = securityUtils.getCurrentUserId();
-        
+
         InternalTransfer transfer = internalTransferRepository.findById(transferId)
                 .orElseThrow(() -> new RuntimeException("Transfer not found"));
-                
+
         User currentUser = securityUtils.getCurrentUser();
         boolean isReceiver = transfer.getReceiver().getId().equals(currentUserId);
         boolean isOfficeRemitAdmin = "OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory()) && currentUser != null && currentUser.isAdmin();
-        
+
         if (!isReceiver && !isOfficeRemitAdmin) {
             throw new RuntimeException("Only the receiver can accept this transfer");
         }
-        
+
         if (transfer.getStatus() != TransferStatus.PENDING) {
             throw new RuntimeException("Transfer is not in PENDING status");
         }
-        
+
         transfer.setStatus(TransferStatus.ACCEPTED);
         InternalTransfer saved = internalTransferRepository.save(transfer);
-        
-        LocalDate transferDay = transfer.getTransferDate() != null ? transfer.getTransferDate().toLocalDate() : LocalDate.now();
+
+        LocalDate transferDay = transfer.getTransferDate() != null
+                ? transfer.getTransferDate().toLocalDate()
+                : dayBookService.getActiveDayBookDate(transfer.getSender().getId());
+
+        String senderMktLabel = transfer.getSenderMarket() != null ? "[" + transfer.getSenderMarket().getMarketName() + "] " : "";
+        String receiverMktLabel = transfer.getReceiverMarket() != null ? "[" + transfer.getReceiverMarket().getMarketName() + "] " : "";
 
         // Update DayBook if receiver is an Employee
         if (transfer.getReceiver().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
-            DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(currentUserId, transferDay)
+            DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), transferDay)
                     .orElseGet(() -> {
-                        dayBookService.getOrCreateDayBook(currentUserId, transferDay);
-                        return dayBookRepository.findByEmployeeIdAndDate(currentUserId, transferDay).orElse(null);
+                        dayBookService.getOrCreateDayBook(transfer.getReceiver().getId(), transferDay);
+                        return dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), transferDay).orElse(null);
                     });
 
             if (dayBook != null) {
@@ -140,20 +163,28 @@ public class InternalTransferServiceImpl implements InternalTransferService {
 
                 DayBookTransaction rxTx = new DayBookTransaction();
                 rxTx.setDayBook(dayBook);
-                rxTx.setEmployeeId(currentUserId);
+                rxTx.setEmployeeId(transfer.getReceiver().getId());
                 rxTx.setType(txType);
                 rxTx.setAmount(transfer.getAmount());
                 String remarks = (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "Cash from: " : "Online from: ")
-                        + transfer.getSender().getFullName()
+                        + senderMktLabel + transfer.getSender().getFullName()
                         + (transfer.getRemarks() != null && !transfer.getRemarks().isBlank() ? " (" + transfer.getRemarks() + ")" : "");
                 rxTx.setRemarks(remarks);
                 rxTx.setCreatedAt(transfer.getTransferDate() != null ? transfer.getTransferDate() : LocalDateTime.now());
                 dayBookTransactionRepository.save(rxTx);
+
+                if (transfer.getReceiverMarket() != null) {
+                    dayBookService.syncMarketDayBook(transfer.getReceiverMarket().getId(), transferDay);
+                }
             }
         }
-        
+
         // Update DayBook if sender is an Employee
-        if (transfer.getSender().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+        // CRITICAL FIX: If category is OFFICE_REMITTANCE, it was ALREADY deducted from sender's DayBook
+        // under 'officeRemittance' when initiated! DO NOT add a duplicate OUTGOING_TRANSFER!
+        if (transfer.getSender().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")
+                && !"OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory())) {
+
             DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), transferDay)
                     .orElseGet(() -> {
                         dayBookService.getOrCreateDayBook(transfer.getSender().getId(), transferDay);
@@ -181,14 +212,18 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 txTx.setType(txType);
                 txTx.setAmount(transfer.getAmount());
                 String remarks = (transfer.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "Cash to: " : "Online to: ")
-                        + transfer.getReceiver().getFullName()
+                        + receiverMktLabel + transfer.getReceiver().getFullName()
                         + (transfer.getRemarks() != null && !transfer.getRemarks().isBlank() ? " (" + transfer.getRemarks() + ")" : "");
                 txTx.setRemarks(remarks);
                 txTx.setCreatedAt(transfer.getTransferDate() != null ? transfer.getTransferDate() : LocalDateTime.now());
                 dayBookTransactionRepository.save(txTx);
+
+                if (transfer.getSenderMarket() != null) {
+                    dayBookService.syncMarketDayBook(transfer.getSenderMarket().getId(), transferDay);
+                }
             }
         }
-        
+
         return mapToResponse(saved);
     }
 
@@ -236,24 +271,43 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     @Transactional
     public InternalTransferResponse rejectTransfer(UUID transferId) {
         UUID currentUserId = securityUtils.getCurrentUserId();
-        
+
         InternalTransfer transfer = internalTransferRepository.findById(transferId)
                 .orElseThrow(() -> new RuntimeException("Transfer not found"));
-                
+
         User currentUser = securityUtils.getCurrentUser();
         boolean isReceiver = transfer.getReceiver().getId().equals(currentUserId);
         boolean isOfficeRemitAdmin = "OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory()) && currentUser != null && currentUser.isAdmin();
-        
+
         if (!isReceiver && !isOfficeRemitAdmin) {
             throw new RuntimeException("Only the receiver can reject this transfer");
         }
-        
+
         if (transfer.getStatus() != TransferStatus.PENDING) {
             throw new RuntimeException("Transfer is not in PENDING status");
         }
-        
+
         transfer.setStatus(TransferStatus.REJECTED);
         InternalTransfer saved = internalTransferRepository.save(transfer);
+
+        // If an OFFICE_REMITTANCE is rejected, refund the employee's DayBook
+        if ("OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory())) {
+            LocalDate transferDay = transfer.getTransferDate() != null
+                    ? transfer.getTransferDate().toLocalDate()
+                    : LocalDate.now();
+            dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), transferDay).ifPresent(dayBook -> {
+                if (dayBook.getOfficeRemittance() != null) {
+                    dayBook.setOfficeRemittance(dayBook.getOfficeRemittance().subtract(transfer.getAmount()).max(BigDecimal.ZERO));
+                    updateDaybookClosingBalance(dayBook);
+                    dayBookRepository.save(dayBook);
+                    propagateClosingBalanceForward(dayBook);
+                    if (transfer.getSenderMarket() != null) {
+                        dayBookService.syncMarketDayBook(transfer.getSenderMarket().getId(), transferDay);
+                    }
+                }
+            });
+        }
+
         return mapToResponse(saved);
     }
 
@@ -283,14 +337,27 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
-    
+
     private InternalTransferResponse mapToResponse(InternalTransfer t) {
+        String senderMkt = t.getSenderMarket() != null ? t.getSenderMarket().getMarketName() : null;
+        if (senderMkt == null && t.getSender() != null) {
+            senderMkt = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(t.getSender().getId())
+                    .map(a -> a.getMarket().getMarketName()).orElse(null);
+        }
+        String receiverMkt = t.getReceiverMarket() != null ? t.getReceiverMarket().getMarketName() : null;
+        if (receiverMkt == null && t.getReceiver() != null) {
+            receiverMkt = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(t.getReceiver().getId())
+                    .map(a -> a.getMarket().getMarketName()).orElse(null);
+        }
+
         return InternalTransferResponse.builder()
                 .id(t.getId())
                 .senderId(t.getSender().getId())
                 .senderName(t.getSender().getFullName())
                 .receiverId(t.getReceiver().getId())
                 .receiverName(t.getReceiver().getFullName())
+                .senderMarketName(senderMkt)
+                .receiverMarketName(receiverMkt)
                 .amount(t.getAmount())
                 .status(t.getStatus())
                 .transferDate(t.getTransferDate())

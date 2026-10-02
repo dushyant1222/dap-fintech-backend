@@ -1,12 +1,18 @@
 package com.dapfintech.auth.mapper;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
 import com.dapfintech.auth.dto.response.EmployeeResponse;
 import com.dapfintech.auth.entity.User;
+import com.dapfintech.market.repository.EmployeeMarketAssignmentRepository;
+import com.dapfintech.market.entity.EmployeeMarketAssignment;
+import java.util.UUID;
 
 @Component
 public class EmployeeMapper {
+
+    @Autowired(required = false)
+    private EmployeeMarketAssignmentRepository assignmentRepository;
 
     public EmployeeResponse toResponse(
             User user
@@ -20,6 +26,18 @@ public class EmployeeMapper {
             } else {
                 empCode = "DAP-EMP-001";
             }
+        }
+
+        UUID marketId = null;
+        String marketName = null;
+        if (assignmentRepository != null && user.getId() != null) {
+            try {
+                EmployeeMarketAssignment asg = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(user.getId()).orElse(null);
+                if (asg != null && asg.getMarket() != null) {
+                    marketId = asg.getMarket().getId();
+                    marketName = asg.getMarket().getMarketName();
+                }
+            } catch (Exception ignored) {}
         }
 
         return EmployeeResponse.builder()
@@ -37,6 +55,8 @@ public class EmployeeMapper {
                 .status(
                         user.getStatus()
                 )
+                .marketId(marketId)
+                .marketName(marketName)
                 .build();
     }
 }
