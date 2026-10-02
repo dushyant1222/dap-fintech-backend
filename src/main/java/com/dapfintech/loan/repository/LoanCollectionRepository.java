@@ -702,7 +702,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     @Query("""
             SELECT c FROM LoanCollection c
             WHERE (c.collectedBy.id = :employeeId OR c.loan.customer.market.id IN :marketIds)
-            AND c.collectionDate BETWEEN :start AND :end
+            AND c.collectionDate >= :start AND c.collectionDate < :end
             ORDER BY c.collectionDate ASC
             """)
     List<LoanCollection> findCollectionsForEmployeeOrMarketsBetween(
@@ -715,7 +715,7 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     @Query("""
             SELECT c FROM LoanCollection c
             WHERE c.collectedBy.id = :employeeId
-            AND c.collectionDate BETWEEN :start AND :end
+            AND c.collectionDate >= :start AND c.collectionDate < :end
             ORDER BY c.collectionDate ASC
             """)
     List<LoanCollection> findCollectionsByEmployeeBetween(

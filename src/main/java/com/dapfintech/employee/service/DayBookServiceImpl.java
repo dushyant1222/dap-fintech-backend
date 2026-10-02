@@ -91,6 +91,9 @@ public class DayBookServiceImpl implements DayBookService {
     }
 
     private void syncDayBookFromDb(DayBook dayBook, UUID employeeId, LocalDate date) {
+        if (dayBook == null || dayBook.getStatus() == DayBookStatus.CLOSED) {
+            return;
+        }
         try {
             List<com.dapfintech.market.entity.EmployeeMarketAssignment> assignments = 
                     assignmentRepository.findByEmployeeIdAndIsActiveTrue(employeeId);
@@ -247,10 +250,12 @@ public class DayBookServiceImpl implements DayBookService {
                     return dayBookRepository.findByEmployeeIdAndDate(employeeId, date).get();
                 });
                 
-        boolean isCollection = "COLLECTIONS".equalsIgnoreCase(request.getType());
+        if (dayBook.getStatus() == DayBookStatus.CLOSED) {
+            throw new RuntimeException("Cannot add transaction to a closed DayBook for " + date + ". Please reopen the DayBook first if you need to modify it.");
+        }
         boolean isTransfer = request.getType() != null && (request.getType().contains("TRANSFER") || request.getType().contains("REMITTANCE"));
-        if (dayBook.getStatus() != DayBookStatus.OPEN && !isCollection && !isTransfer) {
-            throw new RuntimeException("Cannot add non-collection transaction to a closed or pending daybook.");
+        if (dayBook.getStatus() != DayBookStatus.OPEN && !isTransfer) {
+            throw new RuntimeException("Cannot add transaction to a daybook that is pending closure.");
         }
         
         BigDecimal amount = request.getAmount() != null ? request.getAmount() : BigDecimal.ZERO;
@@ -533,8 +538,9 @@ public class DayBookServiceImpl implements DayBookService {
     public java.util.List<com.dapfintech.employee.entity.DayBookTransaction> getTransactions(UUID employeeId, LocalDate date) {
         java.time.LocalDateTime start = date.atStartOfDay();
         java.time.LocalDateTime end = date.plusDays(1).atStartOfDay();
+        java.time.LocalDateTime endInclusive = date.atTime(23, 59, 59, 999999);
         List<com.dapfintech.employee.entity.DayBookTransaction> list = 
-                new java.util.ArrayList<>(dayBookTransactionRepository.findByEmployeeIdAndCreatedAtBetween(employeeId, start, end));
+                new java.util.ArrayList<>(dayBookTransactionRepository.findByEmployeeIdAndCreatedAtBetween(employeeId, start, endInclusive));
 
         // Check if COLLECTIONS transactions are present
         boolean hasCollections = list.stream().anyMatch(t -> "COLLECTIONS".equalsIgnoreCase(t.getType()));

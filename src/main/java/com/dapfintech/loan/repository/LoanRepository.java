@@ -231,7 +231,7 @@ public interface LoanRepository
     @Query("""
             SELECT l FROM Loan l
             WHERE (l.createdBy.id = :employeeId OR l.customer.market.id IN :marketIds)
-            AND l.disbursementDate BETWEEN :start AND :end
+            AND l.disbursementDate >= :start AND l.disbursementDate < :end
             ORDER BY l.disbursementDate ASC
             """)
     List<Loan> findDisbursedLoansForEmployeeOrMarketsBetween(
@@ -267,7 +267,7 @@ public interface LoanRepository
     @Query("""
             SELECT l FROM Loan l
             WHERE l.createdBy.id = :employeeId
-            AND l.disbursementDate BETWEEN :start AND :end
+            AND l.disbursementDate >= :start AND l.disbursementDate < :end
             ORDER BY l.disbursementDate ASC
             """)
     List<Loan> findDisbursedLoansByEmployeeBetween(

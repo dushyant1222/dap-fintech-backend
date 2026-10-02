@@ -975,6 +975,29 @@ public class LoanCollectionServiceImpl
             }
         }
 
+        java.time.LocalDateTime colDateTime = request.getCollectionDate() != null
+                ? request.getCollectionDate()
+                : java.time.LocalDateTime.now();
+        if (colDateTime.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)) {
+            colDateTime = colDateTime.toLocalDate().atTime(java.time.LocalTime.now());
+        }
+
+        // Determine employee for attribution
+        User targetEmployee = null;
+        if (loggedInEmployee != null && loggedInEmployee.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+            targetEmployee = loggedInEmployee;
+        } else if (customer != null && customer.getMarket() != null) {
+            List<com.dapfintech.market.entity.EmployeeMarketAssignment> assigns = 
+                    assignmentRepository.findByMarketIdAndIsActiveTrue(customer.getMarket().getId());
+            if (!assigns.isEmpty()) {
+                targetEmployee = assigns.get(0).getEmployee();
+            }
+        }
+        if (targetEmployee == null && loan != null && loan.getCreatedBy() != null &&
+                loan.getCreatedBy().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+            targetEmployee = loan.getCreatedBy();
+        }
+
         LoanCollection collection =
                 LoanCollection.builder()
                         .loan(loan)
@@ -988,9 +1011,7 @@ public class LoanCollectionServiceImpl
                                 requestedAmount
                         )
                         .collectionDate(
-                                request.getCollectionDate() != null
-                                        ? request.getCollectionDate()
-                                        : java.time.LocalDateTime.now()
+                                colDateTime
                         )
                         .collectionMode(
                                 request.getCollectionMode()
@@ -1002,7 +1023,7 @@ public class LoanCollectionServiceImpl
                                 request.getRemarks()
                         )
                         .collectedBy(
-                                loggedInEmployee
+                                targetEmployee != null ? targetEmployee : loggedInEmployee
                         )
                         .latitude(
                                 request.getLatitude()
@@ -1079,17 +1100,16 @@ public class LoanCollectionServiceImpl
             );
         }
 
-        // Update DayBook if collected by an employee
-        if (loggedInEmployee != null && loggedInEmployee.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
+        // Update DayBook for target employee on collection date
+        if (targetEmployee != null) {
             try {
                 com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
                 dbReq.setType("COLLECTIONS");
                 dbReq.setAmount(collection.getCollectedAmount());
-                dbReq.setRemarks("EMI Collected: " + loan.getCustomer().getFullName() + " (" + loan.getLoanCode() + ")");
-                java.time.LocalDate colDate = collection.getCollectionDate() != null
-                        ? collection.getCollectionDate().toLocalDate()
-                        : java.time.LocalDate.now();
-                dayBookService.addTransactionForDate(loggedInEmployee.getId(), colDate, dbReq);
+                String custName = customer != null ? customer.getFullName() : "";
+                dbReq.setRemarks("EMI Collected: " + custName + " (" + loan.getLoanCode() + ")");
+                java.time.LocalDate colDate = colDateTime.toLocalDate();
+                dayBookService.addTransactionForDate(targetEmployee.getId(), colDate, dbReq);
             } catch(Exception e) {
                 // If it fails (e.g. daybook closed), we don't block the collection, just log it.
                 e.printStackTrace();
