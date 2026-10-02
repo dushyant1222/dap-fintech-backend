@@ -1319,7 +1319,9 @@ public class LoanServiceImpl
                     .filter(amt -> amt.compareTo(BigDecimal.ZERO) > 0)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            BigDecimal emergencyOutstanding = principal.add(unpaidDailyFeesTillToday);
+            BigDecimal emergencyOutstanding = (loan.getLoanStatus() == LoanStatus.CLOSED)
+                    ? BigDecimal.ZERO
+                    : principal.add(unpaidDailyFeesTillToday);
 
             return LoanSummaryResponse.builder()
                     .loanId(loan.getId())

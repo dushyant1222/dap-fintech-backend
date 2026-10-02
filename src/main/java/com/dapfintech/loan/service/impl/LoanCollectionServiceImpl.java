@@ -955,7 +955,11 @@ public class LoanCollectionServiceImpl
 
 
         if (loan.getLoanType() == LoanType.EMERGENCY) {
-            if (amountToAdjust.compareTo(loan.getApprovedAmount()) >= 0) {
+            BigDecimal principal = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount()
+                    : (loan.getApprovedAmount() != null ? loan.getApprovedAmount() : loan.getLoanAmount());
+            if (principal == null) principal = BigDecimal.ZERO;
+
+            if (principal.compareTo(BigDecimal.ZERO) > 0 && amountToAdjust.compareTo(principal) >= 0) {
                 // Collect principal and close loan
                 loan.setLoanStatus(LoanStatus.CLOSED);
                 loanRepository.save(loan);
@@ -966,8 +970,8 @@ public class LoanCollectionServiceImpl
                         .remarks("Closed via EMI collection (Principal Returned)")
                         .build();
                 loanClosureRepository.save(closure);
-                
-                amountToAdjust = amountToAdjust.subtract(loan.getApprovedAmount());
+
+                amountToAdjust = amountToAdjust.subtract(principal);
             }
         }
 

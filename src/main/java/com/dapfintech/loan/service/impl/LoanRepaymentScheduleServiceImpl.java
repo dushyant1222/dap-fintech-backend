@@ -82,44 +82,54 @@ public class LoanRepaymentScheduleServiceImpl
     private void generateEmergencySchedule(
             Loan loan
     ) {
-        // Daily interest is fixed amount per day stored in interestRate
+        // Daily interest is fixed flat amount per day stored in interestRate
         BigDecimal dailyInterest = loan.getInterestRate() != null ? loan.getInterestRate() : BigDecimal.ZERO;
-        BigDecimal totalDue = dailyInterest;
+        LocalDate startDate = loan.getDisbursementDate() != null
+                ? loan.getDisbursementDate().toLocalDate()
+                : LocalDate.now();
+        LocalDate today = LocalDate.now();
 
-        LoanRepaymentSchedule schedule =
-                LoanRepaymentSchedule.builder()
-                        .loan(loan)
-                        .installmentNumber(1)
-                        .dueDate(
-                                loan.getDisbursementDate()
-                                        .toLocalDate()
-                        )
-                        .principalAmount(
-                                BigDecimal.ZERO
-                        )
-                        .interestAmount(
-                                dailyInterest
-                        )
-                        .installmentAmount(
-                                totalDue
-                        )
-                        .dueAmount(
-                                totalDue
-                        )
-                        .paidAmount(
-                                BigDecimal.ZERO
-                        )
-                        .outstandingAmount(
-                                totalDue
-                        )
-                        .repaymentStatus(
-                                RepaymentStatus.PENDING
-                        )
-                        .build();
+        List<LoanRepaymentSchedule> schedules = new ArrayList<>();
+        int instNum = 1;
+        LocalDate curr = startDate;
 
-        scheduleRepository.save(
-                schedule
-        );
+        // Emergency loan starts from disbursement date itself (today/disbursement date)
+        while (!curr.isAfter(today)) {
+            LoanRepaymentSchedule schedule =
+                    LoanRepaymentSchedule.builder()
+                            .loan(loan)
+                            .installmentNumber(instNum++)
+                            .dueDate(curr)
+                            .principalAmount(BigDecimal.ZERO)
+                            .interestAmount(dailyInterest)
+                            .installmentAmount(dailyInterest)
+                            .dueAmount(dailyInterest)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(dailyInterest)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build();
+            schedules.add(schedule);
+            curr = curr.plusDays(1);
+        }
+
+        if (schedules.isEmpty()) {
+            schedules.add(
+                    LoanRepaymentSchedule.builder()
+                            .loan(loan)
+                            .installmentNumber(1)
+                            .dueDate(startDate)
+                            .principalAmount(BigDecimal.ZERO)
+                            .interestAmount(dailyInterest)
+                            .installmentAmount(dailyInterest)
+                            .dueAmount(dailyInterest)
+                            .paidAmount(BigDecimal.ZERO)
+                            .outstandingAmount(dailyInterest)
+                            .repaymentStatus(RepaymentStatus.PENDING)
+                            .build()
+            );
+        }
+
+        scheduleRepository.saveAll(schedules);
     }
     private void generateRegularFlatSchedule(
             Loan loan
@@ -440,7 +450,7 @@ public class LoanRepaymentScheduleServiceImpl
 
             case EDI ->
                     disbursementDate.plusDays(
-                            installment - 1
+                            installment
                     );
         };
     }

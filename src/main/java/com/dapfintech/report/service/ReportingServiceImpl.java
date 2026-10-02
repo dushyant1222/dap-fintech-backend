@@ -220,31 +220,48 @@ public class ReportingServiceImpl implements ReportingService {
                 List<com.dapfintech.loan.entity.LoanRepaymentSchedule> schedules =
                         scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
 
+                boolean isEmergency = loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY;
+                double disbursed = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount().doubleValue()
+                        : (loan.getApprovedAmount() != null ? loan.getApprovedAmount().doubleValue() : (loan.getLoanAmount() != null ? loan.getLoanAmount().doubleValue() : 0.0));
+
                 double dailyEmi = 0.0;
-                if (!schedules.isEmpty() && schedules.get(0).getInstallmentAmount() != null) {
-                    dailyEmi = schedules.get(0).getInstallmentAmount().doubleValue();
-                } else if (loan.getApprovedAmount() != null && loan.getTenure() != null && loan.getTenure() > 0) {
-                    dailyEmi = loan.getApprovedAmount().doubleValue() / loan.getTenure();
-                }
-
                 String tenure = "";
-                if (loan.getTenure() != null) {
-                    if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenure = loan.getTenure() + " Days";
-                    else if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EWI) tenure = loan.getTenure() + " Weeks";
-                    else tenure = loan.getTenure() + " Months";
-                }
+                double totalAmountToBePaid = 0.0;
+                double balanceRequiredTillToday = 0.0;
 
-                double totalAmountToBePaid = schedules.stream()
-                        .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                        .sum();
-                if (totalAmountToBePaid <= 0 && loan.getLoanAmount() != null) {
-                    totalAmountToBePaid = loan.getLoanAmount().doubleValue() + (loan.getInterestRate() != null ? loan.getLoanAmount().doubleValue() * loan.getInterestRate().doubleValue() / 100.0 : 0.0);
-                }
+                if (isEmergency) {
+                    dailyEmi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                    tenure = String.format("₹%.0f/day", dailyEmi);
+                    totalAmountToBePaid = disbursed; // Emergency loan: only keep disbursed amount in place of total loan amount
+                    balanceRequiredTillToday = schedules.stream()
+                            .filter(s -> s.getDueDate() != null && !s.getDueDate().isAfter(today))
+                            .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
+                            .sum();
+                } else {
+                    if (!schedules.isEmpty() && schedules.get(0).getInstallmentAmount() != null) {
+                        dailyEmi = schedules.get(0).getInstallmentAmount().doubleValue();
+                    } else if (loan.getApprovedAmount() != null && loan.getTenure() != null && loan.getTenure() > 0) {
+                        dailyEmi = loan.getApprovedAmount().doubleValue() / loan.getTenure();
+                    }
 
-                double balanceRequiredTillToday = schedules.stream()
-                        .filter(s -> s.getDueDate() != null && !s.getDueDate().isAfter(today))
-                        .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                        .sum();
+                    if (loan.getTenure() != null) {
+                        if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenure = loan.getTenure() + " Days";
+                        else if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EWI) tenure = loan.getTenure() + " Weeks";
+                        else tenure = loan.getTenure() + " Months";
+                    }
+
+                    totalAmountToBePaid = schedules.stream()
+                            .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
+                            .sum();
+                    if (totalAmountToBePaid <= 0 && loan.getLoanAmount() != null) {
+                        totalAmountToBePaid = loan.getLoanAmount().doubleValue() + (loan.getInterestRate() != null ? loan.getLoanAmount().doubleValue() * loan.getInterestRate().doubleValue() / 100.0 : 0.0);
+                    }
+
+                    balanceRequiredTillToday = schedules.stream()
+                            .filter(s -> s.getDueDate() != null && !s.getDueDate().isAfter(today))
+                            .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
+                            .sum();
+                }
 
                 double receivedAmount = 0.0;
                 java.time.LocalDate lastCollectionDate = null;
@@ -265,15 +282,22 @@ public class ReportingServiceImpl implements ReportingService {
                     }
                 }
 
-                double remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
                 String status = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
-                boolean isLoanClosed = "CLOSED".equalsIgnoreCase(status) || (remainingBalance <= 0.001);
+                boolean isLoanClosed = "CLOSED".equalsIgnoreCase(status);
+
+                double gapTillToday = isLoanClosed ? 0.0 : Math.max(0.0, balanceRequiredTillToday - receivedAmount);
+                double remainingBalance;
+                if (isEmergency) {
+                    remainingBalance = isLoanClosed ? 0.0 : (disbursed + gapTillToday);
+                } else {
+                    remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
+                    if (remainingBalance <= 0.001) isLoanClosed = true;
+                }
 
                 if (isLoanClosed && lastCollectionDate == null && loan.getUpdatedAt() != null) {
                     lastCollectionDate = loan.getUpdatedAt().toLocalDate();
                 }
 
-                double gapTillToday = isLoanClosed ? 0.0 : Math.max(0.0, balanceRequiredTillToday - receivedAmount);
                 String issueDateStr = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate().toString() : "-";
                 
                 String closeDateStr = "-";
@@ -475,31 +499,48 @@ public class ReportingServiceImpl implements ReportingService {
                 List<com.dapfintech.loan.entity.LoanRepaymentSchedule> schedules =
                         scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
 
+                boolean isEmergency = loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY;
+                double disbursed = loan.getDisbursedAmount() != null ? loan.getDisbursedAmount().doubleValue()
+                        : (loan.getApprovedAmount() != null ? loan.getApprovedAmount().doubleValue() : (loan.getLoanAmount() != null ? loan.getLoanAmount().doubleValue() : 0.0));
+
                 double dailyEmi = 0.0;
-                if (!schedules.isEmpty() && schedules.get(0).getInstallmentAmount() != null) {
-                    dailyEmi = schedules.get(0).getInstallmentAmount().doubleValue();
-                } else if (loan.getApprovedAmount() != null && loan.getTenure() != null && loan.getTenure() > 0) {
-                    dailyEmi = loan.getApprovedAmount().doubleValue() / loan.getTenure();
-                }
-
                 String tenure = "";
-                if (loan.getTenure() != null) {
-                    if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenure = loan.getTenure() + " Days";
-                    else if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EWI) tenure = loan.getTenure() + " Weeks";
-                    else tenure = loan.getTenure() + " Months";
-                }
+                double totalAmountToBePaid = 0.0;
+                double balanceRequiredTillToday = 0.0;
 
-                double totalAmountToBePaid = schedules.stream()
-                        .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                        .sum();
-                if (totalAmountToBePaid <= 0 && loan.getLoanAmount() != null) {
-                    totalAmountToBePaid = loan.getLoanAmount().doubleValue() + (loan.getInterestRate() != null ? loan.getLoanAmount().doubleValue() * loan.getInterestRate().doubleValue() / 100.0 : 0.0);
-                }
+                if (isEmergency) {
+                    dailyEmi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                    tenure = String.format("₹%.0f/day", dailyEmi);
+                    totalAmountToBePaid = disbursed; // Emergency loan: only keep disbursed amount in place of total loan amount
+                    balanceRequiredTillToday = schedules.stream()
+                            .filter(s -> s.getDueDate() != null && !s.getDueDate().isAfter(today))
+                            .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
+                            .sum();
+                } else {
+                    if (!schedules.isEmpty() && schedules.get(0).getInstallmentAmount() != null) {
+                        dailyEmi = schedules.get(0).getInstallmentAmount().doubleValue();
+                    } else if (loan.getApprovedAmount() != null && loan.getTenure() != null && loan.getTenure() > 0) {
+                        dailyEmi = loan.getApprovedAmount().doubleValue() / loan.getTenure();
+                    }
 
-                double balanceRequiredTillToday = schedules.stream()
-                        .filter(s -> s.getDueDate() != null && !s.getDueDate().isAfter(today))
-                        .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
-                        .sum();
+                    if (loan.getTenure() != null) {
+                        if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EDI) tenure = loan.getTenure() + " Days";
+                        else if (loan.getRepaymentFrequency() == com.dapfintech.loan.enums.RepaymentFrequency.EWI) tenure = loan.getTenure() + " Weeks";
+                        else tenure = loan.getTenure() + " Months";
+                    }
+
+                    totalAmountToBePaid = schedules.stream()
+                            .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
+                            .sum();
+                    if (totalAmountToBePaid <= 0 && loan.getLoanAmount() != null) {
+                        totalAmountToBePaid = loan.getLoanAmount().doubleValue() + (loan.getInterestRate() != null ? loan.getLoanAmount().doubleValue() * loan.getInterestRate().doubleValue() / 100.0 : 0.0);
+                    }
+
+                    balanceRequiredTillToday = schedules.stream()
+                            .filter(s -> s.getDueDate() != null && !s.getDueDate().isAfter(today))
+                            .mapToDouble(s -> s.getInstallmentAmount() != null ? s.getInstallmentAmount().doubleValue() : 0.0)
+                            .sum();
+                }
 
                 double receivedAmount = 0.0;
                 java.time.LocalDate lastCollectionDate = null;
@@ -520,15 +561,22 @@ public class ReportingServiceImpl implements ReportingService {
                     }
                 }
 
-                double remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
                 String status = loan.getLoanStatus() != null ? loan.getLoanStatus().name() : "ACTIVE";
-                boolean isLoanClosed = "CLOSED".equalsIgnoreCase(status) || (remainingBalance <= 0.001);
+                boolean isLoanClosed = "CLOSED".equalsIgnoreCase(status);
+
+                double gapTillToday = isLoanClosed ? 0.0 : Math.max(0.0, balanceRequiredTillToday - receivedAmount);
+                double remainingBalance;
+                if (isEmergency) {
+                    remainingBalance = isLoanClosed ? 0.0 : (disbursed + gapTillToday);
+                } else {
+                    remainingBalance = Math.max(0.0, totalAmountToBePaid - receivedAmount);
+                    if (remainingBalance <= 0.001) isLoanClosed = true;
+                }
 
                 if (isLoanClosed && lastCollectionDate == null && loan.getUpdatedAt() != null) {
                     lastCollectionDate = loan.getUpdatedAt().toLocalDate();
                 }
 
-                double gapTillToday = isLoanClosed ? 0.0 : Math.max(0.0, balanceRequiredTillToday - receivedAmount);
                 String issueDateStr = loan.getDisbursementDate() != null ? loan.getDisbursementDate().toLocalDate().toString() : "-";
                 
                 String closeDateStr = "-";
@@ -844,20 +892,24 @@ public class ReportingServiceImpl implements ReportingService {
                 Cell c1 = row.createCell(1); c1.setCellValue(openingBalance); c1.setCellStyle(numStyle);
 
                 double todayEdi = 0.0;
+                double credit = dailyCols.getOrDefault(curr, 0.0);
+                double debit = 0.0;
+                double remaining;
+
                 if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
                     todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                    remaining = Math.max(0.0, openingBalance + todayEdi - credit);
+                    if (!isActive && curr.isEqual(end)) {
+                        remaining = 0.0;
+                    }
                 } else {
                     todayEdi = dailyEdi.getOrDefault(curr, 0.0);
+                    remaining = Math.max(0.0, openingBalance - credit + debit);
                 }
+
                 Cell c2 = row.createCell(2); c2.setCellValue(todayEdi); c2.setCellStyle(numStyle);
-
-                double credit = dailyCols.getOrDefault(curr, 0.0);
                 Cell c3 = row.createCell(3); c3.setCellValue(credit); c3.setCellStyle(numStyle);
-
-                double debit = 0.0;
                 Cell c4 = row.createCell(4); c4.setCellValue(debit); c4.setCellStyle(numStyle);
-
-                double remaining = Math.max(0.0, openingBalance - credit + debit);
                 Cell c5 = row.createCell(5); c5.setCellValue(remaining); c5.setCellStyle(numStyle);
 
                 openingBalance = remaining;
@@ -1049,29 +1101,36 @@ public class ReportingServiceImpl implements ReportingService {
                 table.addCell(c1);
 
                 double todayEdi = 0.0;
+                double credit = dailyCols.getOrDefault(curr, 0.0);
+                double debit = 0.0;
+                double remaining;
+
                 if (loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY) {
                     todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                    remaining = Math.max(0.0, openingBalance + todayEdi - credit);
+                    if (!isActive && curr.isEqual(end)) {
+                        remaining = 0.0;
+                    }
                 } else {
                     todayEdi = dailyEdi.getOrDefault(curr, 0.0);
+                    remaining = Math.max(0.0, openingBalance - credit + debit);
                 }
+
                 com.lowagie.text.pdf.PdfPCell c2 = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", todayEdi), font));
                 c2.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
                 c2.setPadding(4f);
                 table.addCell(c2);
 
-                double credit = dailyCols.getOrDefault(curr, 0.0);
                 com.lowagie.text.pdf.PdfPCell c3 = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", credit), font));
                 c3.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
                 c3.setPadding(4f);
                 table.addCell(c3);
 
-                double debit = 0.0;
                 com.lowagie.text.pdf.PdfPCell c4 = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", debit), font));
                 c4.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
                 c4.setPadding(4f);
                 table.addCell(c4);
 
-                double remaining = Math.max(0.0, openingBalance - credit + debit);
                 com.lowagie.text.pdf.PdfPCell c5 = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(String.format("%.2f", remaining), font));
                 c5.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
                 c5.setPadding(4f);
@@ -1198,14 +1257,20 @@ public class ReportingServiceImpl implements ReportingService {
         LocalDate curr = start;
         while (!curr.isAfter(end)) {
             double todayEdi = 0.0;
-            if (loan.getLoanType() == LoanType.EMERGENCY) {
-                todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
-            } else {
-                todayEdi = dailyEdi.getOrDefault(curr, 0.0);
-            }
             double credit = dailyCols.getOrDefault(curr, 0.0);
             double debit = 0.0;
-            double remaining = Math.max(0.0, openingBal - credit + debit);
+            double remaining;
+
+            if (loan.getLoanType() == LoanType.EMERGENCY) {
+                todayEdi = loan.getInterestRate() != null ? loan.getInterestRate().doubleValue() : 0.0;
+                remaining = Math.max(0.0, openingBal + todayEdi - credit);
+                if (!isActive && curr.isEqual(end)) {
+                    remaining = 0.0;
+                }
+            } else {
+                todayEdi = dailyEdi.getOrDefault(curr, 0.0);
+                remaining = Math.max(0.0, openingBal - credit + debit);
+            }
 
             LedgerEntryDto entry = new LedgerEntryDto();
             entry.setDate(curr.toString());
@@ -1219,6 +1284,8 @@ public class ReportingServiceImpl implements ReportingService {
             openingBal = remaining;
             curr = curr.plusDays(1);
         }
+
+        double finalOutstanding = !isActive ? 0.0 : openingBal;
 
         LedgerPreviewDto dto = new LedgerPreviewDto();
         dto.setLoanCode(loanNumber);
@@ -1234,9 +1301,9 @@ public class ReportingServiceImpl implements ReportingService {
         dto.setStatus(statusStr);
         dto.setStartDate(start);
         dto.setEndDate(end);
-        dto.setOutstandingBalance(BigDecimal.valueOf(openingBal));
-        dto.setClosingBalance(BigDecimal.valueOf(openingBal));
-        dto.setTotalInterest(BigDecimal.valueOf(Math.max(0.0, totalLoanAmount - disbursedAmount)));
+        dto.setOutstandingBalance(BigDecimal.valueOf(finalOutstanding));
+        dto.setClosingBalance(BigDecimal.valueOf(finalOutstanding));
+        dto.setTotalInterest(loan.getLoanType() == com.dapfintech.loan.enums.LoanType.EMERGENCY ? BigDecimal.ZERO : BigDecimal.valueOf(Math.max(0.0, totalLoanAmount - disbursedAmount)));
         dto.setLedgerEntries(ledgerEntries);
 
         List<LedgerPreviewScheduleDto> schedDtos = new ArrayList<>();
