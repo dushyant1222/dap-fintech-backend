@@ -13,5 +13,6 @@ import java.util.UUID;
 public interface DayBookRepository extends JpaRepository<DayBook, UUID> {
     Optional<DayBook> findByEmployeeIdAndDate(UUID employeeId, LocalDate date);
     List<DayBook> findByEmployeeIdOrderByDateDesc(UUID employeeId);
+    List<DayBook> findByEmployeeIdOrderByDateAsc(UUID employeeId);
     List<DayBook> findByDateAndStatusNot(LocalDate date, com.dapfintech.employee.enums.DayBookStatus status);
 }

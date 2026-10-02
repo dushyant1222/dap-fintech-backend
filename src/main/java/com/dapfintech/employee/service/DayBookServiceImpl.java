@@ -174,9 +174,58 @@ public class DayBookServiceImpl implements DayBookService {
                 }
             }
 
+            // 3. Sync Accepted Transfers for this Employee and Date
+            List<InternalTransfer> inTransfers = internalTransferRepository.findByReceiverIdAndStatusAndTransferDateBetween(
+                    employeeId, TransferStatus.ACCEPTED, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+            );
+            if (inTransfers != null && !inTransfers.isEmpty()) {
+                BigDecimal onlineIn = inTransfers.stream()
+                        .filter(t -> t.getTransferMode() != com.dapfintech.capital.enums.TransferMode.CASH)
+                        .map(InternalTransfer::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal cashIn = inTransfers.stream()
+                        .filter(t -> t.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH)
+                        .map(InternalTransfer::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                if (onlineIn.compareTo(BigDecimal.ZERO) > 0 && (dayBook.getIncomingTransfers() == null || dayBook.getIncomingTransfers().compareTo(onlineIn) != 0)) {
+                    dayBook.setIncomingTransfers(onlineIn);
+                    modified = true;
+                }
+                if (cashIn.compareTo(BigDecimal.ZERO) > 0 && (dayBook.getCashIncomingTransfers() == null || dayBook.getCashIncomingTransfers().compareTo(cashIn) != 0)) {
+                    dayBook.setCashIncomingTransfers(cashIn);
+                    modified = true;
+                }
+            }
+
+            // 4. Sync Outgoing Transfers
+            List<InternalTransfer> outTransfers = internalTransferRepository.findBySenderIdAndStatusAndTransferDateBetween(
+                    employeeId, TransferStatus.ACCEPTED, date.atStartOfDay(), date.plusDays(1).atStartOfDay()
+            );
+            if (outTransfers != null && !outTransfers.isEmpty()) {
+                BigDecimal onlineOut = outTransfers.stream()
+                        .filter(t -> t.getTransferMode() != com.dapfintech.capital.enums.TransferMode.CASH)
+                        .map(InternalTransfer::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal cashOut = outTransfers.stream()
+                        .filter(t -> t.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH)
+                        .map(InternalTransfer::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                if (onlineOut.compareTo(BigDecimal.ZERO) > 0 && (dayBook.getOutgoingTransfers() == null || dayBook.getOutgoingTransfers().compareTo(onlineOut) != 0)) {
+                    dayBook.setOutgoingTransfers(onlineOut);
+                    modified = true;
+                }
+                if (cashOut.compareTo(BigDecimal.ZERO) > 0 && (dayBook.getCashOutgoingTransfers() == null || dayBook.getCashOutgoingTransfers().compareTo(cashOut) != 0)) {
+                    dayBook.setCashOutgoingTransfers(cashOut);
+                    modified = true;
+                }
+            }
+
             if (modified) {
                 dayBook.setClosingBalance(calculateClosingBalance(dayBook));
                 dayBookRepository.save(dayBook);
+                propagateClosingBalanceForward(dayBook);
             }
         } catch (Exception e) {
             // Non-fatal sync
@@ -199,7 +248,8 @@ public class DayBookServiceImpl implements DayBookService {
                 });
                 
         boolean isCollection = "COLLECTIONS".equalsIgnoreCase(request.getType());
-        if (dayBook.getStatus() != DayBookStatus.OPEN && !isCollection) {
+        boolean isTransfer = request.getType() != null && (request.getType().contains("TRANSFER") || request.getType().contains("REMITTANCE"));
+        if (dayBook.getStatus() != DayBookStatus.OPEN && !isCollection && !isTransfer) {
             throw new RuntimeException("Cannot add non-collection transaction to a closed or pending daybook.");
         }
         
@@ -266,16 +316,8 @@ public class DayBookServiceImpl implements DayBookService {
         dayBook.setClosingBalance(calculateClosingBalance(dayBook));
         dayBook = dayBookRepository.save(dayBook);
 
-        // If closed, propagate closing balance forward to next day
-        if (dayBook.getStatus() == DayBookStatus.CLOSED) {
-            Optional<DayBook> nextDayBookOpt = dayBookRepository.findByEmployeeIdAndDate(employeeId, date.plusDays(1));
-            if (nextDayBookOpt.isPresent()) {
-                DayBook nextDb = nextDayBookOpt.get();
-                nextDb.setOpeningBalance(dayBook.getClosingBalance());
-                nextDb.setClosingBalance(calculateClosingBalance(nextDb));
-                dayBookRepository.save(nextDb);
-            }
-        }
+        // Propagate closing balance forward
+        propagateClosingBalanceForward(dayBook);
 
         // Save transaction history for dropdown details
         com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
@@ -341,14 +383,8 @@ public class DayBookServiceImpl implements DayBookService {
         dayBook.setStatus(DayBookStatus.CLOSED);
         dayBook = dayBookRepository.save(dayBook);
         
-        // Carry forward closing balance to next day's opening balance if next day exists
-        Optional<DayBook> nextDayBookOpt = dayBookRepository.findByEmployeeIdAndDate(dayBook.getEmployeeId(), dayBook.getDate().plusDays(1));
-        if (nextDayBookOpt.isPresent()) {
-            DayBook nextDb = nextDayBookOpt.get();
-            nextDb.setOpeningBalance(dayBook.getClosingBalance());
-            nextDb.setClosingBalance(calculateClosingBalance(nextDb));
-            dayBookRepository.save(nextDb);
-        }
+        // Carry forward closing balance to subsequent daybooks
+        propagateClosingBalanceForward(dayBook);
 
         checkAndCloseMarketDayBook(dayBook);
         
@@ -481,6 +517,7 @@ public class DayBookServiceImpl implements DayBookService {
         
         dayBook.setClosingBalance(calculateClosingBalance(dayBook));
         dayBook = dayBookRepository.save(dayBook);
+        propagateClosingBalanceForward(dayBook);
         return mapToResponse(dayBook);
     }
     
@@ -604,7 +641,63 @@ public class DayBookServiceImpl implements DayBookService {
             }
         }
 
+        // Check if TRANSFER transactions are present in list
+        boolean hasTransfers = list.stream().anyMatch(t -> t.getType() != null && t.getType().contains("TRANSFER"));
+        if (!hasTransfers) {
+            List<InternalTransfer> inTransfers = internalTransferRepository.findByReceiverIdAndStatusAndTransferDateBetween(
+                    employeeId, TransferStatus.ACCEPTED, start, end
+            );
+            if (inTransfers != null) {
+                for (InternalTransfer it : inTransfers) {
+                    com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
+                    tx.setEmployeeId(employeeId);
+                    tx.setType(it.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "CASH_INCOMING_TRANSFER" : "INCOMING_TRANSFER");
+                    tx.setAmount(it.getAmount());
+                    String rem = (it.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "Cash from: " : "Online from: ")
+                            + it.getSender().getFullName()
+                            + (it.getRemarks() != null && !it.getRemarks().isBlank() ? " (" + it.getRemarks() + ")" : "");
+                    tx.setRemarks(rem);
+                    tx.setCreatedAt(it.getTransferDate());
+                    list.add(tx);
+                }
+            }
+            List<InternalTransfer> outTransfers = internalTransferRepository.findBySenderIdAndStatusAndTransferDateBetween(
+                    employeeId, TransferStatus.ACCEPTED, start, end
+            );
+            if (outTransfers != null) {
+                for (InternalTransfer ot : outTransfers) {
+                    com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
+                    tx.setEmployeeId(employeeId);
+                    tx.setType(ot.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "CASH_OUTGOING_TRANSFER" : "OUTGOING_TRANSFER");
+                    tx.setAmount(ot.getAmount());
+                    String rem = (ot.getTransferMode() == com.dapfintech.capital.enums.TransferMode.CASH ? "Cash to: " : "Online to: ")
+                            + ot.getReceiver().getFullName()
+                            + (ot.getRemarks() != null && !ot.getRemarks().isBlank() ? " (" + ot.getRemarks() + ")" : "");
+                    tx.setRemarks(rem);
+                    tx.setCreatedAt(ot.getTransferDate());
+                    list.add(tx);
+                }
+            }
+        }
+
         return list;
+    }
+
+    private void propagateClosingBalanceForward(DayBook startDayBook) {
+        if (startDayBook == null || startDayBook.getDate() == null) return;
+        UUID empId = startDayBook.getEmployeeId();
+        LocalDate currDate = startDayBook.getDate();
+        BigDecimal prevClosing = startDayBook.getClosingBalance();
+
+        List<DayBook> subsequentDayBooks = dayBookRepository.findByEmployeeIdOrderByDateAsc(empId);
+        for (DayBook nextDb : subsequentDayBooks) {
+            if (nextDb.getDate().isAfter(currDate)) {
+                nextDb.setOpeningBalance(prevClosing);
+                nextDb.setClosingBalance(calculateClosingBalance(nextDb));
+                dayBookRepository.save(nextDb);
+                prevClosing = nextDb.getClosingBalance();
+            }
+        }
     }
     
     @Override

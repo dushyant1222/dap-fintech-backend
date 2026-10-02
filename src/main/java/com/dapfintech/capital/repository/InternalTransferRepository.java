@@ -1,6 +1,7 @@
 package com.dapfintech.capital.repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,9 @@ public interface InternalTransferRepository extends JpaRepository<InternalTransf
     List<InternalTransfer> findByReceiverIdAndStatusOrderByTransferDateDesc(UUID receiverId, TransferStatus status);
     List<InternalTransfer> findBySenderIdOrderByTransferDateDesc(UUID senderId);
     List<InternalTransfer> findByReceiverIdOrderByTransferDateDesc(UUID receiverId);
+
+    List<InternalTransfer> findByReceiverIdAndStatusAndTransferDateBetween(UUID receiverId, TransferStatus status, LocalDateTime start, LocalDateTime end);
+    List<InternalTransfer> findBySenderIdAndStatusAndTransferDateBetween(UUID senderId, TransferStatus status, LocalDateTime start, LocalDateTime end);
 
     // ── Dashboard aggregate queries (replaces findAll() loop) ──────────────
     @Query(value = """
