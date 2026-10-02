@@ -46,9 +46,8 @@ public class OnboardingController {
         var user = userRepository.findByMobileNumber(auth.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        String role = user.getRole() != null ? user.getRole().getRoleName().toUpperCase() : "";
-        if ("ADMIN".equals(role) || "MASTER_ADMIN".equals(role)) {
-            return; // Admins always have access
+        if (user.isMasterAdmin()) {
+            return; // Master Admin always has access
         }
 
         boolean allowed = employeePermissionService.hasPermission(
