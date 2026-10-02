@@ -34,4 +34,6 @@ public class MarketDayBookResponse {
     private boolean previousDayClosed;
     private LocalDate unclosedDate;
     private List<EmployeeDayBookSummary> employeeSummaries;
+    private String closedByEmployeeName;
+    private List<String> marketEmployeeNames;
 }

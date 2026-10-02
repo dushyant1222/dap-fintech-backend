@@ -16,4 +16,10 @@ public class CapitalSummaryResponse {
     private BigDecimal totalExpenses;
     private BigDecimal vaultAvailableCash;
     private BigDecimal expectedTotalReturn;
+    private BigDecimal totalLoanAmount;
+    private BigDecimal totalInterestExpected;
+    private BigDecimal totalInterestCollected;
+    private BigDecimal totalChargesAndPenalties;
+    private BigDecimal capitalGrowth;
+    private BigDecimal realizedGrowth;
 }

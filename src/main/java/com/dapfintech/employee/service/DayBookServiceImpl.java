@@ -912,10 +912,15 @@ public class DayBookServiceImpl implements DayBookService {
         // Build employee summaries for all active employees assigned to this market
         List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
         List<EmployeeDayBookSummary> summaries = new ArrayList<>();
+        String closedByName = null;
+        List<String> marketEmployeeNames = new ArrayList<>();
+        boolean anyEmpClosed = false;
+        boolean anyEmpPending = false;
 
         for (EmployeeMarketAssignment asg : assignments) {
             User emp = asg.getEmployee();
             if (emp == null) continue;
+            marketEmployeeNames.add(emp.getFullName());
 
             DayBook empDb = dayBookRepository.findByEmployeeIdAndDate(emp.getId(), date)
                     .orElseGet(() -> {
@@ -924,6 +929,14 @@ public class DayBookServiceImpl implements DayBookService {
                     });
 
             if (empDb != null) {
+                if (empDb.getStatus() == DayBookStatus.CLOSED) {
+                    anyEmpClosed = true;
+                    closedByName = emp.getFullName();
+                } else if (empDb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
+                    anyEmpPending = true;
+                    if (closedByName == null) closedByName = emp.getFullName();
+                }
+
                 summaries.add(EmployeeDayBookSummary.builder()
                         .employeeId(emp.getId())
                         .employeeName(emp.getFullName())
@@ -941,6 +954,48 @@ public class DayBookServiceImpl implements DayBookService {
                         .closingBalance(empDb.getClosingBalance())
                         .status(empDb.getStatus())
                         .build());
+            }
+        }
+
+        // Automatic Market-wide Closure Synchronization:
+        // If ANY employee in this market is closed, the market daybook and all employees MUST be CLOSED!
+        if (anyEmpClosed || mdb.getStatus() == DayBookStatus.CLOSED) {
+            if (mdb.getStatus() != DayBookStatus.CLOSED) {
+                mdb.setStatus(DayBookStatus.CLOSED);
+                mdb = marketDayBookRepository.save(mdb);
+            }
+            for (EmployeeDayBookSummary s : summaries) {
+                s.setStatus(DayBookStatus.CLOSED);
+            }
+            for (EmployeeMarketAssignment asg : assignments) {
+                if (asg.getEmployee() != null) {
+                    dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
+                        if (edb.getStatus() != DayBookStatus.CLOSED) {
+                            edb.setStatus(DayBookStatus.CLOSED);
+                            dayBookRepository.save(edb);
+                        }
+                    });
+                }
+            }
+        } else if (anyEmpPending || mdb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
+            if (mdb.getStatus() != DayBookStatus.PENDING_CLOSURE) {
+                mdb.setStatus(DayBookStatus.PENDING_CLOSURE);
+                mdb = marketDayBookRepository.save(mdb);
+            }
+            for (EmployeeDayBookSummary s : summaries) {
+                if (s.getStatus() == DayBookStatus.OPEN) {
+                    s.setStatus(DayBookStatus.PENDING_CLOSURE);
+                }
+            }
+            for (EmployeeMarketAssignment asg : assignments) {
+                if (asg.getEmployee() != null) {
+                    dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
+                        if (edb.getStatus() == DayBookStatus.OPEN) {
+                            edb.setStatus(DayBookStatus.PENDING_CLOSURE);
+                            dayBookRepository.save(edb);
+                        }
+                    });
+                }
             }
         }
 
@@ -973,6 +1028,8 @@ public class DayBookServiceImpl implements DayBookService {
                 .previousDayClosed(prevClosed)
                 .unclosedDate(unclosedDate)
                 .employeeSummaries(summaries)
+                .closedByEmployeeName(closedByName)
+                .marketEmployeeNames(marketEmployeeNames)
                 .build();
     }
 
@@ -988,8 +1045,50 @@ public class DayBookServiceImpl implements DayBookService {
                     return newMdb;
                 });
 
-        if (mdb.getStatus() == DayBookStatus.CLOSED) {
+        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        boolean anyEmpClosed = false;
+        boolean anyEmpPending = false;
+        for (EmployeeMarketAssignment asg : assignments) {
+            if (asg.getEmployee() != null) {
+                java.util.Optional<DayBook> edbOpt = dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date);
+                if (edbOpt.isPresent()) {
+                    DayBook edb = edbOpt.get();
+                    if (edb.getStatus() == DayBookStatus.CLOSED) {
+                        anyEmpClosed = true;
+                    } else if (edb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
+                        anyEmpPending = true;
+                    }
+                }
+            }
+        }
+
+        if (anyEmpClosed || mdb.getStatus() == DayBookStatus.CLOSED) {
+            mdb.setStatus(DayBookStatus.CLOSED);
+            marketDayBookRepository.save(mdb);
+            for (EmployeeMarketAssignment asg : assignments) {
+                if (asg.getEmployee() != null) {
+                    dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
+                        if (edb.getStatus() != DayBookStatus.CLOSED) {
+                            edb.setStatus(DayBookStatus.CLOSED);
+                            dayBookRepository.save(edb);
+                        }
+                    });
+                }
+            }
             return;
+        } else if (anyEmpPending || mdb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
+            mdb.setStatus(DayBookStatus.PENDING_CLOSURE);
+            marketDayBookRepository.save(mdb);
+            for (EmployeeMarketAssignment asg : assignments) {
+                if (asg.getEmployee() != null) {
+                    dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
+                        if (edb.getStatus() == DayBookStatus.OPEN) {
+                            edb.setStatus(DayBookStatus.PENDING_CLOSURE);
+                            dayBookRepository.save(edb);
+                        }
+                    });
+                }
+            }
         }
 
         LocalDateTime start = date.atStartOfDay();
@@ -1028,7 +1127,6 @@ public class DayBookServiceImpl implements DayBookService {
         mdb.setTotalLoansDisbursed(totalDisbursed);
 
         // 3. Spends, Remittance, and Transfers from employees in this market
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
         List<UUID> empIds = assignments.stream().map(a -> a.getEmployee().getId()).collect(Collectors.toList());
 
         BigDecimal totalSpends = BigDecimal.ZERO;

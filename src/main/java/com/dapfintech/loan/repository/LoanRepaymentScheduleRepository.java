@@ -314,5 +314,13 @@ public interface LoanRepaymentScheduleRepository
             AND s.repayment_status != 'PAID'
             """, nativeQuery = true)
     BigDecimal getTotalOutstandingReceivable();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.installment_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            """, nativeQuery = true)
+    BigDecimal getTotalScheduledLoanAmount();
 }
 

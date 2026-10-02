@@ -38,6 +38,7 @@ import com.dapfintech.loan.enums.LoanStatus;
 import com.dapfintech.loan.repository.LoanCollectionRepository;
 import com.dapfintech.loan.repository.LoanRepository;
 import com.dapfintech.loan.repository.LoanRepaymentScheduleRepository;
+import com.dapfintech.loan.repository.LoanChargeRepository;
 import com.dapfintech.capital.repository.InternalTransferRepository;
 import com.dapfintech.capital.entity.InternalTransfer;
 import com.dapfintech.capital.enums.TransferStatus;
@@ -56,6 +57,7 @@ public class CapitalServiceImpl implements CapitalService {
     private final UserRepository userRepository;
     private final InternalTransferRepository internalTransferRepository;
     private final LoanRepaymentScheduleRepository loanRepaymentScheduleRepository;
+    private final LoanChargeRepository loanChargeRepository;
 
     private User getAuthenticatedUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -197,6 +199,32 @@ public class CapitalServiceImpl implements CapitalService {
 
         BigDecimal expectedTotalReturn = orZero(loanRepaymentScheduleRepository.getTotalOutstandingReceivable());
 
+        // Actual Business Growth calculations:
+        BigDecimal totalScheduledLoanAmount = orZero(loanRepaymentScheduleRepository.getTotalScheduledLoanAmount());
+        BigDecimal totalInterestExpected = orZero(loanRepository.getTotalInterestExpected());
+        BigDecimal totalInterestCollected = orZero(loanRepository.getTotalInterestCollected());
+
+        BigDecimal chargesAndPenalties = BigDecimal.ZERO;
+        List<Object[]> chargeRows = loanChargeRepository.getSumChargesByType();
+        if (chargeRows != null) {
+            for (Object[] row : chargeRows) {
+                if (row[1] != null) {
+                    chargesAndPenalties = chargesAndPenalties.add(new BigDecimal(row[1].toString()));
+                }
+            }
+        }
+
+        // Pure interest difference: Total Loan Amount to be collected - Disbursed Amount
+        BigDecimal interestGrowth = totalScheduledLoanAmount.compareTo(totalDisbursed) > 0
+                ? totalScheduledLoanAmount.subtract(totalDisbursed)
+                : totalInterestExpected;
+
+        // Actual Capital Growth = Total Interest + Charges & Penalties
+        BigDecimal capitalGrowth = interestGrowth.add(chargesAndPenalties);
+
+        // Realized Growth = Interest Collected + Charges - Expenses
+        BigDecimal realizedGrowth = totalInterestCollected.add(chargesAndPenalties).subtract(totalExpenses);
+
         return CapitalSummaryResponse.builder()
                 .totalCapitalInjected(totalCapital)
                 .totalDisbursedPrincipal(totalDisbursed)
@@ -207,6 +235,12 @@ public class CapitalServiceImpl implements CapitalService {
                 .totalExpenses(totalExpenses)
                 .vaultAvailableCash(vaultAvailableCash)
                 .expectedTotalReturn(expectedTotalReturn)
+                .totalLoanAmount(totalScheduledLoanAmount)
+                .totalInterestExpected(totalInterestExpected)
+                .totalInterestCollected(totalInterestCollected)
+                .totalChargesAndPenalties(chargesAndPenalties)
+                .capitalGrowth(capitalGrowth)
+                .realizedGrowth(realizedGrowth)
                 .build();
     }
 
