@@ -23,7 +23,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
 import lombok.*;
 
@@ -93,8 +92,6 @@ public class Loan extends BaseEntity {
 	    @Column(name = "disbursement_date")
 	    private LocalDateTime disbursementDate;
 	    
-
-	    
 	    @ManyToOne(fetch = FetchType.LAZY)
 	    @JoinColumn(name = "created_by")
 	    private User createdBy;
@@ -110,5 +107,10 @@ public class Loan extends BaseEntity {
 
 	    @Column(name = "special_closure_remarks")
 	    private String specialClosureRemarks;
-}
 
+	    @Column(name = "closed_loan_penalty")
+	    private BigDecimal closedLoanPenalty;
+
+	    @Column(name = "closed_penalty_remarks")
+	    private String closedPenaltyRemarks;
+}

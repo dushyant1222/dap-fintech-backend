@@ -23,4 +23,6 @@ public class LoanSummaryResponse {
     private BigDecimal outstandingAmount;
 
     private String loanStatus;
+
+    private BigDecimal penaltyAmount;
 }

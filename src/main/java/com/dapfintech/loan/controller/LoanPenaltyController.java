@@ -4,6 +4,7 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.dapfintech.loan.dto.request.AddClosedLoanPenaltyRequest;
 import com.dapfintech.loan.dto.request.CloseSpecialLoanRequest;
 import com.dapfintech.loan.dto.request.UpdatePenaltySettingsRequest;
 import com.dapfintech.loan.dto.response.LoanClosureResponse;
@@ -39,4 +40,13 @@ public class LoanPenaltyController {
     ) {
         return ResponseEntity.ok(loanPenaltyService.closeOnSpecialCondition(loanId, request));
     }
+
+    @PostMapping("/{loanId}/closed-penalty")
+    public ResponseEntity<LoanPenaltySummaryResponse> addClosedLoanPenalty(
+            @PathVariable UUID loanId,
+            @RequestBody AddClosedLoanPenaltyRequest request
+    ) {
+        return ResponseEntity.ok(loanPenaltyService.addClosedLoanPenalty(loanId, request));
+    }
 }
+

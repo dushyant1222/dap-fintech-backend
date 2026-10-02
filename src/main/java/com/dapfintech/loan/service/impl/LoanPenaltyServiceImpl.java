@@ -76,6 +76,27 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
         }
 
         BigDecimal waivedPercent = loan.getPenaltyWaivedPercent() != null ? loan.getPenaltyWaivedPercent() : BigDecimal.ZERO;
+        BigDecimal closedLoanPenalty = loan.getClosedLoanPenalty() != null ? loan.getClosedLoanPenalty() : BigDecimal.ZERO;
+        String closedPenaltyRemarks = loan.getClosedPenaltyRemarks();
+
+        if (loan.getLoanStatus() == LoanStatus.CLOSED) {
+            return LoanPenaltySummaryResponse.builder()
+                    .loanId(loan.getId())
+                    .loanAmount(loan.getLoanAmount())
+                    .totalOutstandingPrincipal(BigDecimal.ZERO)
+                    .penaltyRate(penaltyRate)
+                    .penaltyWaivedPercent(waivedPercent)
+                    .gracePeriodDays(2)
+                    .totalOverdueInstallments(0)
+                    .overdueInstallments(new ArrayList<>())
+                    .grossCompoundPenalty(closedLoanPenalty)
+                    .waivedPenaltyAmount(BigDecimal.ZERO)
+                    .netPayablePenalty(closedLoanPenalty)
+                    .totalPayableWithPenalty(closedLoanPenalty)
+                    .closedLoanPenalty(closedLoanPenalty)
+                    .closedPenaltyRemarks(closedPenaltyRemarks)
+                    .build();
+        }
 
         List<LoanRepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNumberAsc(loanId);
         LocalDate today = LocalDate.now();
@@ -134,6 +155,8 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
                 .waivedPenaltyAmount(waivedPenaltyAmount)
                 .netPayablePenalty(netPayablePenalty)
                 .totalPayableWithPenalty(totalPayable)
+                .closedLoanPenalty(closedLoanPenalty)
+                .closedPenaltyRemarks(closedPenaltyRemarks)
                 .build();
     }
 
@@ -262,6 +285,82 @@ public class LoanPenaltyServiceImpl implements LoanPenaltyService {
 
         auditLogService.log(currentUser.getId().toString(), "CLOSE_LOAN_SPECIAL", "LOAN", loan.getId().toString());
         return LoanClosureResponse.builder().id(savedClosure.getId()).loanId(loan.getId()).closureDate(savedClosure.getClosureDate()).remarks(savedClosure.getRemarks()).build();
+    }
+
+    @Override
+    @Transactional
+    public LoanPenaltySummaryResponse addClosedLoanPenalty(UUID loanId, com.dapfintech.loan.dto.request.AddClosedLoanPenaltyRequest request) {
+        User currentUser = verifyAdminAccess();
+        accessControlService.validateLoanAccess(loanId);
+
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        if (loan.getLoanStatus() != LoanStatus.CLOSED) {
+            throw new RuntimeException("Penalty can only be added to closed loans via this action");
+        }
+
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Penalty amount must be greater than zero");
+        }
+
+        BigDecimal currentPenalty = loan.getClosedLoanPenalty() != null ? loan.getClosedLoanPenalty() : BigDecimal.ZERO;
+        BigDecimal newTotalPenalty = currentPenalty.add(request.getAmount());
+        loan.setClosedLoanPenalty(newTotalPenalty);
+
+        if (request.getRemarks() != null && !request.getRemarks().trim().isEmpty()) {
+            String existingRemarks = loan.getClosedPenaltyRemarks() != null ? loan.getClosedPenaltyRemarks() + "; " : "";
+            loan.setClosedPenaltyRemarks(existingRemarks + request.getRemarks().trim());
+        }
+
+        loanRepository.save(loan);
+
+        // CREATE COLLECTION RECORD IF REQUESTED (Default is true)
+        boolean shouldCreateCollection = request.getCreateCollectionRecord() == null || Boolean.TRUE.equals(request.getCreateCollectionRecord());
+        if (shouldCreateCollection) {
+            CollectionMode mode = request.getCollectionMode() != null ? request.getCollectionMode() : CollectionMode.CASH;
+            LoanCollection collection = LoanCollection.builder()
+                    .loan(loan)
+                    .collectedAmount(request.getAmount())
+                    .collectionDate(LocalDateTime.now())
+                    .collectionMode(mode)
+                    .collectionStatus(CollectionStatus.SUCCESS)
+                    .receiptNumber("PEN-" + System.currentTimeMillis())
+                    .remarks(request.getRemarks() != null && !request.getRemarks().trim().isEmpty()
+                            ? "CLOSED LOAN PENALTY: " + request.getRemarks().trim()
+                            : "CLOSED LOAN PENALTY")
+                    .collectedBy(currentUser)
+                    .build();
+            loanCollectionRepository.save(collection);
+
+            // Update DayBook if employee or loan creator was employee
+            User daybookUser = (currentUser.getRole() != null && currentUser.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE"))
+                    ? currentUser
+                    : (loan.getCreatedBy() != null && loan.getCreatedBy().getRole() != null && loan.getCreatedBy().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE") ? loan.getCreatedBy() : null);
+
+            if (daybookUser != null && mode == CollectionMode.CASH) {
+                try {
+                    com.dapfintech.employee.dto.DayBookTransactionRequest txReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
+                    txReq.setType("COLLECTIONS");
+                    txReq.setAmount(request.getAmount());
+                    txReq.setRemarks("Closed Loan Penalty: " + (loan.getCustomer() != null ? loan.getCustomer().getFullName() : "") + " (" + loan.getLoanCode() + ")");
+                    dayBookService.addTransaction(daybookUser.getId(), txReq);
+                } catch (Exception e) {
+                    // non-blocking
+                }
+            }
+        }
+
+        // Update closure record remarks
+        loanClosureRepository.findByLoanId(loanId).ifPresent(closure -> {
+            String rem = closure.getRemarks() != null ? closure.getRemarks() : "";
+            closure.setRemarks(rem + " [Penalty Added: ₹" + request.getAmount() + "]");
+            loanClosureRepository.save(closure);
+        });
+
+        auditLogService.log(currentUser.getId().toString(), "ADD_CLOSED_LOAN_PENALTY", "LOAN", loan.getId().toString());
+
+        return calculatePenalty(loanId);
     }
 
     private User verifyAdminAccess() {

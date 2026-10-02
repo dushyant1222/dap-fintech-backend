@@ -1323,14 +1323,20 @@ public class LoanServiceImpl
                     ? BigDecimal.ZERO
                     : principal.add(unpaidDailyFeesTillToday);
 
+            BigDecimal emergencyPenalty = loan.getClosedLoanPenalty() != null ? loan.getClosedLoanPenalty() : BigDecimal.ZERO;
+            BigDecimal emergencyTotalAmount = (loan.getLoanStatus() == LoanStatus.CLOSED && emergencyPenalty.compareTo(BigDecimal.ZERO) > 0)
+                    ? principal.add(emergencyPenalty)
+                    : principal;
+
             return LoanSummaryResponse.builder()
                     .loanId(loan.getId())
                     .approvedAmount(loan.getApprovedAmount())
                     .disbursedAmount(loan.getDisbursedAmount())
-                    .totalLoanAmount(principal)
+                    .totalLoanAmount(emergencyTotalAmount)
                     .totalCollected(totalCollected)
                     .outstandingAmount(emergencyOutstanding)
                     .loanStatus(loan.getLoanStatus().name())
+                    .penaltyAmount(emergencyPenalty)
                     .build();
         }
 
@@ -1350,6 +1356,11 @@ public class LoanServiceImpl
                     ? principal.multiply(loan.getInterestRate()).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
             totalLoanAmount = principal.add(interest);
+        }
+
+        BigDecimal penaltyAmount = loan.getClosedLoanPenalty() != null ? loan.getClosedLoanPenalty() : BigDecimal.ZERO;
+        if (loan.getLoanStatus() == LoanStatus.CLOSED && penaltyAmount.compareTo(BigDecimal.ZERO) > 0) {
+            totalLoanAmount = totalLoanAmount.add(penaltyAmount);
         }
 
         return LoanSummaryResponse
@@ -1375,6 +1386,9 @@ public class LoanServiceImpl
                 .loanStatus(
                         loan.getLoanStatus()
                                 .name()
+                )
+                .penaltyAmount(
+                        penaltyAmount
                 )
                 .build();
     }

@@ -25,4 +25,6 @@ public class LoanPenaltySummaryResponse {
     private BigDecimal waivedPenaltyAmount;
     private BigDecimal netPayablePenalty;
     private BigDecimal totalPayableWithPenalty;
+    private BigDecimal closedLoanPenalty;
+    private String closedPenaltyRemarks;
 }
