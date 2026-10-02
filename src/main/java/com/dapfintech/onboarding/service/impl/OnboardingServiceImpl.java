@@ -323,27 +323,40 @@ public class OnboardingServiceImpl implements OnboardingService {
         }
 
         // 3. Resolve or Create Customer
-        String mobile = req.getMobileNumber().trim();
-        Customer customer = customerRepository.findByMobileNumber(mobile).orElse(null);
+        Customer customer = null;
+        if (req.getCustomerId() != null) {
+            customer = customerRepository.findById(req.getCustomerId()).orElse(null);
+        }
         if (customer == null) {
-            String fullName = req.getCustomerName().trim();
-            String[] parts = fullName.split("\\s+", 2);
-            String firstName = parts[0];
-            String lastName = parts.length > 1 ? parts[1] : "";
+            String mobile = req.getMobileNumber().trim();
+            customer = customerRepository.findByMobileNumber(mobile).orElse(null);
+            if (customer == null) {
+                String fullName = req.getCustomerName().trim();
+                String[] parts = fullName.split("\\s+", 2);
+                String firstName = parts[0];
+                String lastName = parts.length > 1 ? parts[1] : "";
 
-            customer = Customer.builder()
-                    .firstName(firstName)
-                    .lastName(lastName)
-                    .mobileNumber(mobile)
-                    .market(market)
-                    .status(CustomerStatus.ACTIVE)
-                    .build();
-            customer.setCustomerCode(generateCustomerCode(market));
-            customer = customerRepository.save(customer);
-        } else {
-            if (market != null && customer.getMarket() == null) {
-                customer.setMarket(market);
-                customerRepository.save(customer);
+                customer = Customer.builder()
+                        .firstName(firstName)
+                        .lastName(lastName)
+                        .mobileNumber(mobile)
+                        .market(market)
+                        .status(CustomerStatus.ACTIVE)
+                        .build();
+                customer.setCustomerCode(generateCustomerCode(market));
+                customer = customerRepository.save(customer);
+            }
+        }
+        if (market == null && customer.getMarket() != null) {
+            market = customer.getMarket();
+        } else if (market != null && customer.getMarket() == null) {
+            customer.setMarket(market);
+            customerRepository.save(customer);
+        }
+        if (collector == null && market != null) {
+            List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(market.getId());
+            if (!assignments.isEmpty()) {
+                collector = assignments.get(0).getEmployee();
             }
         }
 

@@ -18,12 +18,16 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dapfintech.employee.enums.DayBookStatus;
+import com.dapfintech.market.entity.EmployeeMarketAssignment;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -52,6 +56,9 @@ public class DayBookSelfHealingService {
     @Autowired
     private DayBookService dayBookService;
 
+    @Autowired
+    private com.dapfintech.market.repository.EmployeeMarketAssignmentRepository assignmentRepository;
+
     private static final Pattern LOAN_CODE_PATTERN = Pattern.compile("(?i)\\b(DAP-LN-[A-Z0-9-]+|[A-Z]{2,4}-[A-Z0-9]+-[A-Z0-9]+-\\d+)\\b");
 
     @EventListener(ApplicationReadyEvent.class)
@@ -60,15 +67,30 @@ public class DayBookSelfHealingService {
         log.info("[DayBookSelfHealing] Starting DayBook data integrity check and self-healing...");
 
         try {
+            linkOrphanTransactionsToDayBooks();
             int duplicateTransfersRemoved = cleanDuplicateOfficeRemittanceTransfers();
             int orphanLoanTxsRemoved = cleanOrphanLoanTransactions();
             recalculateAllDayBookBalances();
             resyncMarketDayBooks();
+            syncMarketDayBookClosures();
 
             log.info("[DayBookSelfHealing] Completed successfully! Duplicate transfers removed: {}, Orphan loan txs removed: {}",
                     duplicateTransfersRemoved, orphanLoanTxsRemoved);
         } catch (Exception e) {
             log.error("[DayBookSelfHealing] Error during self-healing: {}", e.getMessage(), e);
+        }
+    }
+
+    private void linkOrphanTransactionsToDayBooks() {
+        List<DayBookTransaction> allTxs = dayBookTransactionRepository.findAll();
+        for (DayBookTransaction tx : allTxs) {
+            if (tx.getDayBook() == null && tx.getCreatedAt() != null && tx.getEmployeeId() != null) {
+                LocalDate txDate = tx.getCreatedAt().toLocalDate();
+                dayBookRepository.findByEmployeeIdAndDate(tx.getEmployeeId(), txDate).ifPresent(db -> {
+                    tx.setDayBook(db);
+                    dayBookTransactionRepository.save(tx);
+                });
+            }
         }
     }
 
@@ -199,5 +221,45 @@ public class DayBookSelfHealingService {
 
         db.setClosingBalance(closing);
         dayBookRepository.save(db);
+    }
+
+    private void syncMarketDayBookClosures() {
+        List<Market> markets = marketRepository.findAll();
+        for (Market market : markets) {
+            List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(market.getId());
+            if (assignments == null || assignments.isEmpty()) continue;
+
+            List<UUID> empIds = assignments.stream()
+                    .map(a -> a.getEmployee().getId())
+                    .collect(java.util.stream.Collectors.toList());
+
+            Set<LocalDate> closedDates = new HashSet<>();
+            for (UUID empId : empIds) {
+                List<DayBook> closedBooks = dayBookRepository.findByEmployeeIdAndStatus(empId, DayBookStatus.CLOSED);
+                for (DayBook cb : closedBooks) {
+                    if (cb.getDate() != null) {
+                        closedDates.add(cb.getDate());
+                    }
+                }
+            }
+
+            for (LocalDate date : closedDates) {
+                marketDayBookRepository.findByMarketIdAndDate(market.getId(), date).ifPresent(mdb -> {
+                    if (mdb.getStatus() != DayBookStatus.CLOSED) {
+                        mdb.setStatus(DayBookStatus.CLOSED);
+                        marketDayBookRepository.save(mdb);
+                    }
+                });
+
+                for (UUID empId : empIds) {
+                    dayBookRepository.findByEmployeeIdAndDate(empId, date).ifPresent(db -> {
+                        if (db.getStatus() != DayBookStatus.CLOSED) {
+                            db.setStatus(DayBookStatus.CLOSED);
+                            dayBookRepository.save(db);
+                        }
+                    });
+                }
+            }
+        }
     }
 }

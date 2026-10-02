@@ -20,6 +20,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OnboardSingleLoanRequest {
 
+    private java.util.UUID customerId;
+
     @NotBlank(message = "Customer name is required")
     private String customerName;
 

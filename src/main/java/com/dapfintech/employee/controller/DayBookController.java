@@ -26,7 +26,8 @@ public class DayBookController {
     @GetMapping("/today/transactions")
     public ResponseEntity<java.util.List<com.dapfintech.employee.entity.DayBookTransaction>> getTodayTransactions(
             @PathVariable UUID employeeId) {
-        return ResponseEntity.ok(dayBookService.getTransactions(employeeId, java.time.LocalDate.now()));
+        java.time.LocalDate activeDate = dayBookService.getActiveDayBookDate(employeeId);
+        return ResponseEntity.ok(dayBookService.getTransactions(employeeId, activeDate));
     }
 
     @GetMapping("/by-date/transactions")
