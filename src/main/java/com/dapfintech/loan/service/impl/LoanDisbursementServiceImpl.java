@@ -2,6 +2,7 @@ package com.dapfintech.loan.service.impl;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -44,6 +45,7 @@ public class LoanDisbursementServiceImpl
     private final UserRepository userRepository;
     private final DayBookRepository dayBookRepository;
     private final com.dapfintech.employee.service.DayBookService dayBookService;
+    private final com.dapfintech.market.repository.EmployeeMarketAssignmentRepository assignmentRepository;
 
     @Override
     public DisbursementResponse disburseLoan(
@@ -128,7 +130,22 @@ public class LoanDisbursementServiceImpl
         loanDisbursementRepository
                 .save(disbursement);
 
-        java.time.LocalDate activeDate = dayBookService.getActiveDayBookDate(loggedInUser.getId());
+        User responsibleUser = !loggedInUser.isAdmin() ? loggedInUser : (loan.getCreatedBy() != null ? loan.getCreatedBy() : null);
+        if (responsibleUser == null && loan.getCustomer() != null && loan.getCustomer().getMarket() != null) {
+            List<com.dapfintech.market.entity.EmployeeMarketAssignment> assigns = assignmentRepository.findActiveOrNullByMarketId(loan.getCustomer().getMarket().getId());
+            if (assigns == null || assigns.isEmpty()) {
+                assigns = assignmentRepository.findByMarketId(loan.getCustomer().getMarket().getId());
+            }
+            if (assigns != null && !assigns.isEmpty()) {
+                responsibleUser = assigns.get(0).getEmployee();
+            }
+        }
+
+        java.time.LocalDate activeDate = responsibleUser != null
+                ? dayBookService.getActiveDayBookDate(responsibleUser.getId())
+                : (loan.getCustomer() != null && loan.getCustomer().getMarket() != null
+                        ? dayBookService.getActiveMarketDayBookDate(loan.getCustomer().getMarket().getId())
+                        : dayBookService.getActiveDayBookDate(loggedInUser.getId()));
         LocalDateTime disDate = activeDate.atTime(java.time.LocalTime.now());
 
         loan.setDisbursedAmount(
@@ -148,7 +165,6 @@ public class LoanDisbursementServiceImpl
                 loan.getId()
         );
 
-        User responsibleUser = !loggedInUser.isAdmin() ? loggedInUser : (loan.getCreatedBy() != null ? loan.getCreatedBy() : null);
         if (responsibleUser != null) {
             try {
                 com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();

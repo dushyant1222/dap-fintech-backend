@@ -78,11 +78,18 @@ public interface EmployeeMarketAssignmentRepository
     );
 
     // =====================================================
-    // CHECK WHETHER MARKET HAS ACTIVE EMPLOYEES
+    // ALL ASSIGNMENTS (INCLUDING NULL IS_ACTIVE)
     // =====================================================
 
-    boolean existsByMarketIdAndIsActiveTrue(
-            UUID marketId
-    );
-    
+    boolean existsByMarketIdAndIsActiveTrue(UUID marketId);
+
+    List<EmployeeMarketAssignment> findByEmployeeId(UUID employeeId);
+
+    List<EmployeeMarketAssignment> findByMarketId(UUID marketId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT a FROM EmployeeMarketAssignment a WHERE a.market.id = :marketId AND (a.isActive = true OR a.isActive IS NULL)")
+    List<EmployeeMarketAssignment> findActiveOrNullByMarketId(@org.springframework.data.repository.query.Param("marketId") UUID marketId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT a FROM EmployeeMarketAssignment a WHERE a.employee.id = :employeeId AND (a.isActive = true OR a.isActive IS NULL)")
+    List<EmployeeMarketAssignment> findActiveOrNullByEmployeeId(@org.springframework.data.repository.query.Param("employeeId") UUID employeeId);
 }

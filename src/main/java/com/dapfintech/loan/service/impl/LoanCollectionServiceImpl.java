@@ -975,33 +975,42 @@ public class LoanCollectionServiceImpl
             }
         }
 
-        java.time.LocalDateTime colDateTime;
-        if (request.getCollectionDate() != null) {
-            colDateTime = request.getCollectionDate();
-            if (colDateTime.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)) {
-                colDateTime = colDateTime.toLocalDate().atTime(java.time.LocalTime.now());
-            }
-        } else {
-            java.time.LocalDate activeDate = dayBookService.getActiveDayBookDate(
-                    loggedInEmployee != null ? loggedInEmployee.getId() : null
-            );
-            colDateTime = activeDate.atTime(java.time.LocalTime.now());
-        }
-
-        // Determine employee for attribution
+            // Determine employee for attribution
         User targetEmployee = null;
         if (loggedInEmployee != null && loggedInEmployee.getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             targetEmployee = loggedInEmployee;
         } else if (customer != null && customer.getMarket() != null) {
             List<com.dapfintech.market.entity.EmployeeMarketAssignment> assigns = 
-                    assignmentRepository.findByMarketIdAndIsActiveTrue(customer.getMarket().getId());
-            if (!assigns.isEmpty()) {
+                    assignmentRepository.findActiveOrNullByMarketId(customer.getMarket().getId());
+            if (assigns == null || assigns.isEmpty()) {
+                assigns = assignmentRepository.findByMarketId(customer.getMarket().getId());
+            }
+            if (assigns != null && !assigns.isEmpty()) {
                 targetEmployee = assigns.get(0).getEmployee();
             }
         }
         if (targetEmployee == null && loan != null && loan.getCreatedBy() != null &&
                 loan.getCreatedBy().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
             targetEmployee = loan.getCreatedBy();
+        }
+
+        java.time.LocalDate activeColDate = dayBookService.getActiveDayBookDate(
+                targetEmployee != null ? targetEmployee.getId() : (loggedInEmployee != null ? loggedInEmployee.getId() : null)
+        );
+
+        java.time.LocalDateTime colDateTime;
+        if (request.getCollectionDate() != null) {
+            colDateTime = request.getCollectionDate();
+            if (colDateTime.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)) {
+                colDateTime = colDateTime.toLocalDate().atTime(java.time.LocalTime.now());
+            }
+            if (colDateTime.toLocalDate().isBefore(activeColDate) ||
+                    (targetEmployee != null && dayBookRepository.findByEmployeeIdAndDate(targetEmployee.getId(), colDateTime.toLocalDate())
+                            .map(d -> d.getStatus() == com.dapfintech.employee.enums.DayBookStatus.CLOSED).orElse(false))) {
+                colDateTime = activeColDate.atTime(colDateTime.toLocalTime());
+            }
+        } else {
+            colDateTime = activeColDate.atTime(java.time.LocalTime.now());
         }
 
         LoanCollection collection =

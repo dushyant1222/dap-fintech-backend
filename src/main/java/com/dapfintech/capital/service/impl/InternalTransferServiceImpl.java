@@ -65,6 +65,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 .map(EmployeeMarketAssignment::getMarket).orElse(null);
 
         // Date resolution: if transferDate is explicitly specified, use it. Otherwise use active sequential daybook date!
+        LocalDate senderActiveDate = dayBookService.getActiveDayBookDate(sender.getId());
         LocalDateTime txDate;
         if (request.getTransferDate() != null && !request.getTransferDate().trim().isEmpty()) {
             try {
@@ -78,17 +79,23 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 } else {
                     txDate = LocalDate.parse(dStr).atTime(LocalTime.now());
                 }
+                if (txDate.toLocalTime().equals(LocalTime.MIDNIGHT)) {
+                    txDate = txDate.toLocalDate().atTime(LocalTime.now());
+                }
             } catch (Exception e) {
                 try {
                     txDate = java.time.OffsetDateTime.parse(request.getTransferDate()).toLocalDateTime();
                 } catch (Exception ex) {
-                    LocalDate activeDate = dayBookService.getActiveDayBookDate(sender.getId());
-                    txDate = activeDate.atTime(LocalTime.now());
+                    txDate = senderActiveDate.atTime(LocalTime.now());
                 }
             }
+            if (txDate.toLocalDate().isBefore(senderActiveDate) ||
+                    dayBookRepository.findByEmployeeIdAndDate(sender.getId(), txDate.toLocalDate())
+                            .map(d -> d.getStatus() == com.dapfintech.employee.enums.DayBookStatus.CLOSED).orElse(false)) {
+                txDate = senderActiveDate.atTime(txDate.toLocalTime());
+            }
         } else {
-            LocalDate activeDate = dayBookService.getActiveDayBookDate(sender.getId());
-            txDate = activeDate.atTime(LocalTime.now());
+            txDate = senderActiveDate.atTime(LocalTime.now());
         }
 
         InternalTransfer transfer = InternalTransfer.builder()
@@ -131,19 +138,36 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         transfer.setStatus(TransferStatus.ACCEPTED);
         InternalTransfer saved = internalTransferRepository.save(transfer);
 
+        LocalDate senderActiveDate = dayBookService.getActiveDayBookDate(transfer.getSender().getId());
         LocalDate transferDay = transfer.getTransferDate() != null
                 ? transfer.getTransferDate().toLocalDate()
-                : dayBookService.getActiveDayBookDate(transfer.getSender().getId());
+                : senderActiveDate;
+        if (transferDay.isBefore(senderActiveDate) ||
+                dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), transferDay)
+                        .map(d -> d.getStatus() == com.dapfintech.employee.enums.DayBookStatus.CLOSED).orElse(false)) {
+            transferDay = senderActiveDate;
+        }
+
+        LocalDate receiverActiveDate = dayBookService.getActiveDayBookDate(transfer.getReceiver().getId());
+        LocalDate receiverDay = transferDay;
+        if (receiverDay.isBefore(receiverActiveDate) ||
+                dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), receiverDay)
+                        .map(d -> d.getStatus() == com.dapfintech.employee.enums.DayBookStatus.CLOSED).orElse(false)) {
+            receiverDay = receiverActiveDate;
+        }
+
+        final LocalDate finalReceiverDay = receiverDay;
+        final LocalDate finalTransferDay = transferDay;
 
         String senderMktLabel = transfer.getSenderMarket() != null ? "[" + transfer.getSenderMarket().getMarketName() + "] " : "";
         String receiverMktLabel = transfer.getReceiverMarket() != null ? "[" + transfer.getReceiverMarket().getMarketName() + "] " : "";
 
         // Update DayBook if receiver is an Employee
         if (transfer.getReceiver().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")) {
-            DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), transferDay)
+            DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), finalReceiverDay)
                     .orElseGet(() -> {
-                        dayBookService.getOrCreateDayBook(transfer.getReceiver().getId(), transferDay);
-                        return dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), transferDay).orElse(null);
+                        dayBookService.getOrCreateDayBook(transfer.getReceiver().getId(), finalReceiverDay);
+                        return dayBookRepository.findByEmployeeIdAndDate(transfer.getReceiver().getId(), finalReceiverDay).orElse(null);
                     });
 
             if (dayBook != null) {
@@ -174,7 +198,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
                 dayBookTransactionRepository.save(rxTx);
 
                 if (transfer.getReceiverMarket() != null) {
-                    dayBookService.syncMarketDayBook(transfer.getReceiverMarket().getId(), transferDay);
+                    dayBookService.syncMarketDayBook(transfer.getReceiverMarket().getId(), finalReceiverDay);
                 }
             }
         }
@@ -185,10 +209,10 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         if (transfer.getSender().getRole().getRoleName().equalsIgnoreCase("EMPLOYEE")
                 && !"OFFICE_REMITTANCE".equalsIgnoreCase(transfer.getCategory())) {
 
-            DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), transferDay)
+            DayBook dayBook = dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), finalTransferDay)
                     .orElseGet(() -> {
-                        dayBookService.getOrCreateDayBook(transfer.getSender().getId(), transferDay);
-                        return dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), transferDay).orElse(null);
+                        dayBookService.getOrCreateDayBook(transfer.getSender().getId(), finalTransferDay);
+                        return dayBookRepository.findByEmployeeIdAndDate(transfer.getSender().getId(), finalTransferDay).orElse(null);
                     });
 
             if (dayBook != null) {

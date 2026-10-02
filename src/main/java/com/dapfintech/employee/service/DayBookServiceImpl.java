@@ -76,9 +76,43 @@ public class DayBookServiceImpl implements DayBookService {
     @Autowired
     private LoanRepository loanRepository;
 
+    private List<EmployeeMarketAssignment> getAssignmentsForEmployee(UUID employeeId) {
+        List<EmployeeMarketAssignment> list = assignmentRepository.findActiveOrNullByEmployeeId(employeeId);
+        if (list == null || list.isEmpty()) {
+            list = assignmentRepository.findByEmployeeId(employeeId);
+        }
+        return list != null ? list : Collections.emptyList();
+    }
+
+    private List<EmployeeMarketAssignment> getAssignmentsForMarket(UUID marketId) {
+        List<EmployeeMarketAssignment> list = assignmentRepository.findActiveOrNullByMarketId(marketId);
+        if (list == null || list.isEmpty()) {
+            list = assignmentRepository.findByMarketId(marketId);
+        }
+        return list != null ? list : Collections.emptyList();
+    }
+
     // =========================================================================
     // SEQUENTIAL DATE RESOLUTION
     // =========================================================================
+
+    public boolean isMarketClosedOnDate(UUID marketId, LocalDate date) {
+        if (marketId == null || date == null) return false;
+        if (marketDayBookRepository.findByMarketIdAndDate(marketId, date)
+                .map(m -> m.getStatus() == DayBookStatus.CLOSED).orElse(false)) {
+            return true;
+        }
+        List<EmployeeMarketAssignment> assigns = getAssignmentsForMarket(marketId);
+        for (EmployeeMarketAssignment asg : assigns) {
+            if (asg.getEmployee() != null) {
+                if (dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date)
+                        .map(d -> d.getStatus() == DayBookStatus.CLOSED).orElse(false)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     @Override
     public LocalDate getActiveMarketDayBookDate(UUID marketId) {
@@ -86,37 +120,43 @@ public class DayBookServiceImpl implements DayBookService {
             return LocalDate.now();
         }
 
+        // 1. Check from marketDayBookRepository for latest closed date
+        LocalDate latestClosed = null;
         List<MarketDayBook> pastClosed = marketDayBookRepository
                 .findByMarketIdAndStatusOrderByDateDesc(marketId, DayBookStatus.CLOSED);
-
         if (!pastClosed.isEmpty()) {
-            LocalDate latestClosed = pastClosed.get(0).getDate();
-            LocalDate candidate = latestClosed.plusDays(1);
-            if (candidate.isAfter(LocalDate.now())) {
-                return LocalDate.now();
-            }
-            return candidate;
+            latestClosed = pastClosed.get(0).getDate();
         }
 
-        // If no closed market daybook exists, check earliest existing market daybook
-        List<MarketDayBook> all = marketDayBookRepository.findByMarketIdOrderByDateAsc(marketId);
-        if (!all.isEmpty()) {
-            return all.get(0).getDate();
-        }
-
-        // Check if there is an employee daybook for this market
-        List<EmployeeMarketAssignment> assigns = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        // 2. Also check all employee daybooks for this market for any closed dates
+        List<EmployeeMarketAssignment> assigns = getAssignmentsForMarket(marketId);
         for (EmployeeMarketAssignment asg : assigns) {
             if (asg.getEmployee() != null) {
                 List<DayBook> closedEmp = dayBookRepository
                         .findByEmployeeIdAndStatusOrderByDateDesc(asg.getEmployee().getId(), DayBookStatus.CLOSED);
                 if (!closedEmp.isEmpty()) {
-                    LocalDate candidate = closedEmp.get(0).getDate().plusDays(1);
-                    if (candidate.isAfter(LocalDate.now())) {
-                        return LocalDate.now();
+                    LocalDate empLatestClosed = closedEmp.get(0).getDate();
+                    if (latestClosed == null || empLatestClosed.isAfter(latestClosed)) {
+                        latestClosed = empLatestClosed;
                     }
-                    return candidate;
                 }
+            }
+        }
+
+        // 3. If there is any closed date, advance candidate until isMarketClosedOnDate is false!
+        if (latestClosed != null) {
+            LocalDate candidate = latestClosed.plusDays(1);
+            while (isMarketClosedOnDate(marketId, candidate)) {
+                candidate = candidate.plusDays(1);
+            }
+            return candidate;
+        }
+
+        // 4. If no closed date exists anywhere, check earliest existing unclosed market daybook
+        List<MarketDayBook> all = marketDayBookRepository.findByMarketIdOrderByDateAsc(marketId);
+        for (MarketDayBook m : all) {
+            if (m.getStatus() != DayBookStatus.CLOSED && !isMarketClosedOnDate(marketId, m.getDate())) {
+                return m.getDate();
             }
         }
 
@@ -130,9 +170,11 @@ public class DayBookServiceImpl implements DayBookService {
         }
 
         // Check if employee is assigned to a market
-        Optional<EmployeeMarketAssignment> asgOpt = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId);
-        if (asgOpt.isPresent() && asgOpt.get().getMarket() != null) {
-            return getActiveMarketDayBookDate(asgOpt.get().getMarket().getId());
+        List<EmployeeMarketAssignment> asgList = getAssignmentsForEmployee(employeeId);
+        for (EmployeeMarketAssignment asg : asgList) {
+            if (asg.getMarket() != null) {
+                return getActiveMarketDayBookDate(asg.getMarket().getId());
+            }
         }
 
         // Fallback for unassigned employee: check employee's own closed daybooks
@@ -142,15 +184,18 @@ public class DayBookServiceImpl implements DayBookService {
         if (!pastClosed.isEmpty()) {
             LocalDate latestClosed = pastClosed.get(0).getDate();
             LocalDate candidate = latestClosed.plusDays(1);
-            if (candidate.isAfter(LocalDate.now())) {
-                return LocalDate.now();
+            while (dayBookRepository.findByEmployeeIdAndDate(employeeId, candidate)
+                    .map(d -> d.getStatus() == DayBookStatus.CLOSED).orElse(false)) {
+                candidate = candidate.plusDays(1);
             }
             return candidate;
         }
 
         List<DayBook> all = dayBookRepository.findByEmployeeIdOrderByDateAsc(employeeId);
-        if (!all.isEmpty()) {
-            return all.get(0).getDate();
+        for (DayBook d : all) {
+            if (d.getStatus() != DayBookStatus.CLOSED) {
+                return d.getDate();
+            }
         }
 
         return LocalDate.now();
@@ -174,11 +219,31 @@ public class DayBookServiceImpl implements DayBookService {
         Optional<DayBook> existing = dayBookRepository.findByEmployeeIdAndDate(employeeId, date);
         if (existing.isPresent()) {
             dayBook = existing.get();
+            if (dayBook.getStatus() != DayBookStatus.CLOSED) {
+                List<EmployeeMarketAssignment> empAsgs = getAssignmentsForEmployee(employeeId);
+                for (EmployeeMarketAssignment asg : empAsgs) {
+                    if (asg.getMarket() != null && isMarketClosedOnDate(asg.getMarket().getId(), date)) {
+                        dayBook.setStatus(DayBookStatus.CLOSED);
+                        dayBook = dayBookRepository.save(dayBook);
+                        break;
+                    }
+                }
+            }
         } else {
             dayBook = new DayBook();
             dayBook.setEmployeeId(employeeId);
             dayBook.setDate(date);
-            dayBook.setStatus(DayBookStatus.OPEN);
+
+            // Check if market or any coworker in this market is already CLOSED on this date
+            DayBookStatus initialStatus = DayBookStatus.OPEN;
+            List<EmployeeMarketAssignment> empAsgs = getAssignmentsForEmployee(employeeId);
+            for (EmployeeMarketAssignment asg : empAsgs) {
+                if (asg.getMarket() != null && isMarketClosedOnDate(asg.getMarket().getId(), date)) {
+                    initialStatus = DayBookStatus.CLOSED;
+                    break;
+                }
+            }
+            dayBook.setStatus(initialStatus);
 
             List<DayBook> pastBooks = dayBookRepository.findByEmployeeIdOrderByDateDesc(employeeId);
             BigDecimal openingBal = BigDecimal.ZERO;
@@ -324,6 +389,10 @@ public class DayBookServiceImpl implements DayBookService {
                 });
 
         if (dayBook.getStatus() == DayBookStatus.CLOSED) {
+            LocalDate nextOpenDate = getActiveDayBookDate(employeeId);
+            if (!nextOpenDate.equals(date)) {
+                return addTransactionForDate(employeeId, nextOpenDate, request);
+            }
             throw new RuntimeException("Cannot add transaction to a closed DayBook for " + date + ". Please reopen the DayBook first if you need to modify it.");
         }
         boolean isTransfer = request.getType() != null && (request.getType().contains("TRANSFER") || request.getType().contains("REMITTANCE"));
@@ -361,8 +430,8 @@ public class DayBookServiceImpl implements DayBookService {
                 User masterAdmin = userRepository.findByRoleRoleName("MASTER_ADMIN").stream().findFirst()
                         .orElseGet(() -> userRepository.findByRoleRoleName("ADMIN").stream().findFirst().orElse(null));
                 if (employee != null && masterAdmin != null) {
-                    Market empMarket = assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId)
-                            .map(EmployeeMarketAssignment::getMarket).orElse(null);
+                    List<EmployeeMarketAssignment> asgList = getAssignmentsForEmployee(employeeId);
+                    Market empMarket = !asgList.isEmpty() ? asgList.get(0).getMarket() : null;
 
                     InternalTransfer transfer = InternalTransfer.builder()
                             .sender(employee)
@@ -413,8 +482,12 @@ public class DayBookServiceImpl implements DayBookService {
         dayBookTransactionRepository.save(tx);
 
         // Sync market daybook if applicable
-        assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId)
-                .ifPresent(asg -> syncMarketDayBook(asg.getMarket().getId(), date));
+        List<EmployeeMarketAssignment> empAsgs = getAssignmentsForEmployee(employeeId);
+        for (EmployeeMarketAssignment asg : empAsgs) {
+            if (asg.getMarket() != null) {
+                syncMarketDayBook(asg.getMarket().getId(), date);
+            }
+        }
 
         return mapToResponse(dayBook);
     }
@@ -441,19 +514,26 @@ public class DayBookServiceImpl implements DayBookService {
 
         // Client requirement: If ANY employee in that market requests closure, the whole market
         // and all employees in that market become PENDING_CLOSURE together.
-        assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId).ifPresent(asg -> {
+        List<EmployeeMarketAssignment> asgs = getAssignmentsForEmployee(employeeId);
+        for (EmployeeMarketAssignment asg : asgs) {
             if (asg.getMarket() != null) {
                 UUID marketId = asg.getMarket().getId();
                 syncMarketDayBook(marketId, date);
-                marketDayBookRepository.findByMarketIdAndDate(marketId, date).ifPresent(mdb -> {
-                    if (mdb.getStatus() != DayBookStatus.CLOSED) {
-                        mdb.setStatus(DayBookStatus.PENDING_CLOSURE);
-                        marketDayBookRepository.save(mdb);
-                    }
-                });
-                List<EmployeeMarketAssignment> marketEmployees = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+                MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, date)
+                        .orElseGet(() -> {
+                            MarketDayBook newMdb = new MarketDayBook();
+                            newMdb.setMarketId(marketId);
+                            newMdb.setDate(date);
+                            newMdb.setStatus(DayBookStatus.PENDING_CLOSURE);
+                            return marketDayBookRepository.save(newMdb);
+                        });
+                if (mdb.getStatus() != DayBookStatus.CLOSED) {
+                    mdb.setStatus(DayBookStatus.PENDING_CLOSURE);
+                    marketDayBookRepository.save(mdb);
+                }
+                List<EmployeeMarketAssignment> marketEmployees = getAssignmentsForMarket(marketId);
                 for (EmployeeMarketAssignment empAsg : marketEmployees) {
-                    if (!empAsg.getEmployee().getId().equals(employeeId)) {
+                    if (empAsg.getEmployee() != null && !empAsg.getEmployee().getId().equals(employeeId)) {
                         dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
                             if (otherDb.getStatus() == DayBookStatus.OPEN) {
                                 otherDb.setStatus(DayBookStatus.PENDING_CLOSURE);
@@ -463,7 +543,7 @@ public class DayBookServiceImpl implements DayBookService {
                     }
                 }
             }
-        });
+        }
 
         return mapToResponse(dayBook);
     }
@@ -485,7 +565,8 @@ public class DayBookServiceImpl implements DayBookService {
         dayBook = dayBookRepository.save(dayBook);
 
         // Revert market and other market employees to OPEN
-        assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId).ifPresent(asg -> {
+        List<EmployeeMarketAssignment> asgs = getAssignmentsForEmployee(employeeId);
+        for (EmployeeMarketAssignment asg : asgs) {
             if (asg.getMarket() != null) {
                 UUID marketId = asg.getMarket().getId();
                 marketDayBookRepository.findByMarketIdAndDate(marketId, date).ifPresent(mdb -> {
@@ -494,17 +575,19 @@ public class DayBookServiceImpl implements DayBookService {
                         marketDayBookRepository.save(mdb);
                     }
                 });
-                List<EmployeeMarketAssignment> marketEmployees = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+                List<EmployeeMarketAssignment> marketEmployees = getAssignmentsForMarket(marketId);
                 for (EmployeeMarketAssignment empAsg : marketEmployees) {
-                    dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
-                        if (otherDb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
-                            otherDb.setStatus(DayBookStatus.OPEN);
-                            dayBookRepository.save(otherDb);
-                        }
-                    });
+                    if (empAsg.getEmployee() != null) {
+                        dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
+                            if (otherDb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
+                                otherDb.setStatus(DayBookStatus.OPEN);
+                                dayBookRepository.save(otherDb);
+                            }
+                        });
+                    }
                 }
             }
-        });
+        }
 
         return mapToResponse(dayBook);
     }
@@ -528,37 +611,57 @@ public class DayBookServiceImpl implements DayBookService {
         UUID employeeId = closedDayBook.getEmployeeId();
         LocalDate targetDate = closedDayBook.getDate();
 
-        EmployeeMarketAssignment assignment =
-                assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId).orElse(null);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForEmployee(employeeId);
+        if (assignments.isEmpty()) {
+            return;
+        }
 
-        if (assignment == null || assignment.getMarket() == null) return;
+        for (EmployeeMarketAssignment assignment : assignments) {
+            if (assignment.getMarket() == null) continue;
+            UUID marketId = assignment.getMarket().getId();
 
-        UUID marketId = assignment.getMarket().getId();
+            // Client requirement: If ANY employee in that market is closed, the market daybook
+            // and ALL employees in that market are automatically CLOSED!
+            MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, targetDate)
+                    .orElseGet(() -> {
+                        MarketDayBook newMdb = new MarketDayBook();
+                        newMdb.setMarketId(marketId);
+                        newMdb.setDate(targetDate);
+                        newMdb.setStatus(DayBookStatus.CLOSED);
+                        return marketDayBookRepository.save(newMdb);
+                    });
+            mdb.setStatus(DayBookStatus.CLOSED);
+            marketDayBookRepository.save(mdb);
 
-        // Client requirement: If ANY employee in that market is closed, the market daybook
-        // and ALL employees in that market are automatically CLOSED!
-        syncMarketDayBook(marketId, targetDate);
-        marketDayBookRepository.findByMarketIdAndDate(marketId, targetDate).ifPresent(mdb -> {
+            syncMarketDayBook(marketId, targetDate);
+
+            mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, targetDate).orElse(mdb);
             mdb.setStatus(DayBookStatus.CLOSED);
             marketDayBookRepository.save(mdb);
             propagateMarketClosingBalanceForward(mdb);
+
             notificationService.createNotification(
                     "Market Daybook Closed",
                     "Market " + assignment.getMarket().getMarketName() + " daybook closed for " + targetDate + ". Total Collection: Rs. " + mdb.getTotalCollections()
             );
-        });
 
-        List<EmployeeMarketAssignment> marketEmployees =
-                assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
-        for (EmployeeMarketAssignment empAssignment : marketEmployees) {
-            UUID empId = empAssignment.getEmployee().getId();
-            if (empId.equals(employeeId)) continue;
+            List<EmployeeMarketAssignment> marketEmployees = getAssignmentsForMarket(marketId);
+            for (EmployeeMarketAssignment empAssignment : marketEmployees) {
+                if (empAssignment.getEmployee() == null) continue;
+                UUID empId = empAssignment.getEmployee().getId();
 
-            dayBookRepository.findByEmployeeIdAndDate(empId, targetDate).ifPresent(otherDb -> {
+                DayBook otherDb = dayBookRepository.findByEmployeeIdAndDate(empId, targetDate)
+                        .orElseGet(() -> {
+                            DayBook newDb = new DayBook();
+                            newDb.setEmployeeId(empId);
+                            newDb.setDate(targetDate);
+                            newDb.setStatus(DayBookStatus.CLOSED);
+                            return dayBookRepository.save(newDb);
+                        });
                 otherDb.setStatus(DayBookStatus.CLOSED);
                 dayBookRepository.save(otherDb);
                 propagateClosingBalanceForward(otherDb);
-            });
+            }
         }
     }
 
@@ -574,22 +677,25 @@ public class DayBookServiceImpl implements DayBookService {
         // Reopen market daybook and other market employees
         UUID employeeId = dayBook.getEmployeeId();
         LocalDate date = dayBook.getDate();
-        assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId).ifPresent(asg -> {
+        List<EmployeeMarketAssignment> asgs = getAssignmentsForEmployee(employeeId);
+        for (EmployeeMarketAssignment asg : asgs) {
             if (asg.getMarket() != null) {
                 UUID marketId = asg.getMarket().getId();
                 marketDayBookRepository.findByMarketIdAndDate(marketId, date).ifPresent(mdb -> {
                     mdb.setStatus(DayBookStatus.OPEN);
                     marketDayBookRepository.save(mdb);
                 });
-                List<EmployeeMarketAssignment> marketEmployees = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+                List<EmployeeMarketAssignment> marketEmployees = getAssignmentsForMarket(marketId);
                 for (EmployeeMarketAssignment empAsg : marketEmployees) {
-                    dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
-                        otherDb.setStatus(DayBookStatus.OPEN);
-                        dayBookRepository.save(otherDb);
-                    });
+                    if (empAsg.getEmployee() != null) {
+                        dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
+                            otherDb.setStatus(DayBookStatus.OPEN);
+                            dayBookRepository.save(otherDb);
+                        });
+                    }
                 }
             }
-        });
+        }
 
         return mapToResponse(dayBook);
     }
@@ -605,22 +711,25 @@ public class DayBookServiceImpl implements DayBookService {
 
         UUID employeeId = dayBook.getEmployeeId();
         LocalDate date = dayBook.getDate();
-        assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(employeeId).ifPresent(assignment -> {
+        List<EmployeeMarketAssignment> asgs = getAssignmentsForEmployee(employeeId);
+        for (EmployeeMarketAssignment assignment : asgs) {
             if (assignment.getMarket() != null) {
                 UUID marketId = assignment.getMarket().getId();
                 marketDayBookRepository.findByMarketIdAndDate(marketId, date).ifPresent(mdb -> {
                     mdb.setStatus(DayBookStatus.OPEN);
                     marketDayBookRepository.save(mdb);
                 });
-                List<EmployeeMarketAssignment> marketEmployees = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+                List<EmployeeMarketAssignment> marketEmployees = getAssignmentsForMarket(marketId);
                 for (EmployeeMarketAssignment empAsg : marketEmployees) {
-                    dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
-                        otherDb.setStatus(DayBookStatus.OPEN);
-                        dayBookRepository.save(otherDb);
-                    });
+                    if (empAsg.getEmployee() != null) {
+                        dayBookRepository.findByEmployeeIdAndDate(empAsg.getEmployee().getId(), date).ifPresent(otherDb -> {
+                            otherDb.setStatus(DayBookStatus.OPEN);
+                            dayBookRepository.save(otherDb);
+                        });
+                    }
                 }
             }
-        });
+        }
 
         return mapToResponse(dayBook);
     }
@@ -646,8 +755,12 @@ public class DayBookServiceImpl implements DayBookService {
         propagateClosingBalanceForward(savedDayBook);
 
         LocalDate bookDate = savedDayBook.getDate();
-        assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(savedDayBook.getEmployeeId())
-                .ifPresent(asg -> syncMarketDayBook(asg.getMarket().getId(), bookDate));
+        List<EmployeeMarketAssignment> empAsgs = getAssignmentsForEmployee(savedDayBook.getEmployeeId());
+        for (EmployeeMarketAssignment asg : empAsgs) {
+            if (asg.getMarket() != null) {
+                syncMarketDayBook(asg.getMarket().getId(), bookDate);
+            }
+        }
 
         return mapToResponse(savedDayBook);
     }
@@ -910,7 +1023,7 @@ public class DayBookServiceImpl implements DayBookService {
                 });
 
         // Build employee summaries for all active employees assigned to this market
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForMarket(marketId);
         List<EmployeeDayBookSummary> summaries = new ArrayList<>();
         String closedByName = null;
         List<String> marketEmployeeNames = new ArrayList<>();
@@ -958,8 +1071,8 @@ public class DayBookServiceImpl implements DayBookService {
         }
 
         // Automatic Market-wide Closure Synchronization:
-        // If ANY employee in this market is closed, the market daybook and all employees MUST be CLOSED!
-        if (anyEmpClosed || mdb.getStatus() == DayBookStatus.CLOSED) {
+        // If ANY employee in this market is closed, or market itself is closed:
+        if (anyEmpClosed || mdb.getStatus() == DayBookStatus.CLOSED || isMarketClosedOnDate(marketId, date)) {
             if (mdb.getStatus() != DayBookStatus.CLOSED) {
                 mdb.setStatus(DayBookStatus.CLOSED);
                 mdb = marketDayBookRepository.save(mdb);
@@ -969,12 +1082,19 @@ public class DayBookServiceImpl implements DayBookService {
             }
             for (EmployeeMarketAssignment asg : assignments) {
                 if (asg.getEmployee() != null) {
-                    dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
-                        if (edb.getStatus() != DayBookStatus.CLOSED) {
-                            edb.setStatus(DayBookStatus.CLOSED);
-                            dayBookRepository.save(edb);
-                        }
-                    });
+                    DayBook edb = dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date)
+                            .orElseGet(() -> {
+                                DayBook newDb = new DayBook();
+                                newDb.setEmployeeId(asg.getEmployee().getId());
+                                newDb.setDate(date);
+                                newDb.setStatus(DayBookStatus.CLOSED);
+                                return dayBookRepository.save(newDb);
+                            });
+                    if (edb.getStatus() != DayBookStatus.CLOSED) {
+                        edb.setStatus(DayBookStatus.CLOSED);
+                        dayBookRepository.save(edb);
+                        propagateClosingBalanceForward(edb);
+                    }
                 }
             }
         } else if (anyEmpPending || mdb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
@@ -1042,10 +1162,10 @@ public class DayBookServiceImpl implements DayBookService {
                     newMdb.setMarketId(marketId);
                     newMdb.setDate(date);
                     newMdb.setStatus(DayBookStatus.OPEN);
-                    return newMdb;
+                    return marketDayBookRepository.save(newMdb);
                 });
 
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForMarket(marketId);
         boolean anyEmpClosed = false;
         boolean anyEmpPending = false;
         for (EmployeeMarketAssignment asg : assignments) {
@@ -1062,7 +1182,7 @@ public class DayBookServiceImpl implements DayBookService {
             }
         }
 
-        if (anyEmpClosed || mdb.getStatus() == DayBookStatus.CLOSED) {
+        if (anyEmpClosed || mdb.getStatus() == DayBookStatus.CLOSED || isMarketClosedOnDate(marketId, date)) {
             mdb.setStatus(DayBookStatus.CLOSED);
             marketDayBookRepository.save(mdb);
             for (EmployeeMarketAssignment asg : assignments) {
@@ -1075,7 +1195,6 @@ public class DayBookServiceImpl implements DayBookService {
                     });
                 }
             }
-            return;
         } else if (anyEmpPending || mdb.getStatus() == DayBookStatus.PENDING_CLOSURE) {
             mdb.setStatus(DayBookStatus.PENDING_CLOSURE);
             marketDayBookRepository.save(mdb);
@@ -1127,7 +1246,7 @@ public class DayBookServiceImpl implements DayBookService {
         mdb.setTotalLoansDisbursed(totalDisbursed);
 
         // 3. Spends, Remittance, and Transfers from employees in this market
-        List<UUID> empIds = assignments.stream().map(a -> a.getEmployee().getId()).collect(Collectors.toList());
+        List<UUID> empIds = assignments.stream().filter(a -> a.getEmployee() != null).map(a -> a.getEmployee().getId()).collect(Collectors.toList());
 
         BigDecimal totalSpends = BigDecimal.ZERO;
         BigDecimal totalOfficeRemit = BigDecimal.ZERO;
@@ -1212,23 +1331,41 @@ public class DayBookServiceImpl implements DayBookService {
     @Override
     @Transactional
     public MarketDayBookResponse approveMarketClosure(UUID marketId, LocalDate date) {
+        MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, date)
+                .orElseGet(() -> {
+                    MarketDayBook newMdb = new MarketDayBook();
+                    newMdb.setMarketId(marketId);
+                    newMdb.setDate(date);
+                    newMdb.setStatus(DayBookStatus.CLOSED);
+                    return marketDayBookRepository.save(newMdb);
+                });
+
+        mdb.setStatus(DayBookStatus.CLOSED);
+        marketDayBookRepository.save(mdb);
+
         syncMarketDayBook(marketId, date);
 
-        MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, date)
-                .orElseThrow(() -> new RuntimeException("Market DayBook not found for " + date));
-
+        mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, date).orElse(mdb);
         mdb.setStatus(DayBookStatus.CLOSED);
         marketDayBookRepository.save(mdb);
         propagateMarketClosingBalanceForward(mdb);
 
         // Also close all active employee daybooks in this market for this date
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForMarket(marketId);
         for (EmployeeMarketAssignment asg : assignments) {
-            dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
-                edb.setStatus(DayBookStatus.CLOSED);
-                dayBookRepository.save(edb);
-                propagateClosingBalanceForward(edb);
-            });
+            if (asg.getEmployee() == null) continue;
+            UUID empId = asg.getEmployee().getId();
+            DayBook edb = dayBookRepository.findByEmployeeIdAndDate(empId, date)
+                    .orElseGet(() -> {
+                        DayBook newDb = new DayBook();
+                        newDb.setEmployeeId(empId);
+                        newDb.setDate(date);
+                        newDb.setStatus(DayBookStatus.CLOSED);
+                        return dayBookRepository.save(newDb);
+                    });
+            edb.setStatus(DayBookStatus.CLOSED);
+            dayBookRepository.save(edb);
+            propagateClosingBalanceForward(edb);
         }
 
         return getOrCreateMarketDayBook(marketId, date);
@@ -1243,8 +1380,9 @@ public class DayBookServiceImpl implements DayBookService {
         mdb.setStatus(DayBookStatus.OPEN);
         marketDayBookRepository.save(mdb);
 
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForMarket(marketId);
         for (EmployeeMarketAssignment asg : assignments) {
+            if (asg.getEmployee() == null) continue;
             dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
                 edb.setStatus(DayBookStatus.OPEN);
                 dayBookRepository.save(edb);
@@ -1263,8 +1401,9 @@ public class DayBookServiceImpl implements DayBookService {
         mdb.setStatus(DayBookStatus.OPEN);
         marketDayBookRepository.save(mdb);
 
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForMarket(marketId);
         for (EmployeeMarketAssignment asg : assignments) {
+            if (asg.getEmployee() == null) continue;
             dayBookRepository.findByEmployeeIdAndDate(asg.getEmployee().getId(), date).ifPresent(edb -> {
                 edb.setStatus(DayBookStatus.OPEN);
                 dayBookRepository.save(edb);
@@ -1277,9 +1416,10 @@ public class DayBookServiceImpl implements DayBookService {
     @Override
     @Transactional
     public List<DayBookTransaction> getMarketTransactions(UUID marketId, LocalDate date) {
-        List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(marketId);
+        List<EmployeeMarketAssignment> assignments = getAssignmentsForMarket(marketId);
         List<DayBookTransaction> all = new ArrayList<>();
         for (EmployeeMarketAssignment asg : assignments) {
+            if (asg.getEmployee() == null) continue;
             all.addAll(getTransactions(asg.getEmployee().getId(), date));
         }
         all.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
@@ -1318,8 +1458,12 @@ public class DayBookServiceImpl implements DayBookService {
             dayBookRepository.save(db);
             propagateClosingBalanceForward(db);
 
-            assignmentRepository.findFirstByEmployeeIdAndIsActiveTrue(db.getEmployeeId())
-                    .ifPresent(asg -> syncMarketDayBook(asg.getMarket().getId(), db.getDate()));
+            List<EmployeeMarketAssignment> empAsgs = getAssignmentsForEmployee(db.getEmployeeId());
+            for (EmployeeMarketAssignment asg : empAsgs) {
+                if (asg.getMarket() != null) {
+                    syncMarketDayBook(asg.getMarket().getId(), db.getDate());
+                }
+            }
         }
     }
 
