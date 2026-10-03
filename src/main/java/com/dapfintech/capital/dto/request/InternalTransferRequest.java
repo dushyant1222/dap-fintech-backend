@@ -9,8 +9,9 @@ import lombok.Data;
 @Data
 public class InternalTransferRequest {
     
-    @NotNull(message = "Receiver ID is required")
     private UUID receiverId;
+    private UUID receiverMarketId;
+    private UUID senderMarketId;
     
     @NotNull(message = "Amount is required")
     @Positive(message = "Amount must be positive")

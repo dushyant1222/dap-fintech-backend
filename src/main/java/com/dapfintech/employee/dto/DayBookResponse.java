@@ -11,6 +11,8 @@ import java.util.UUID;
 public class DayBookResponse {
     private UUID id;
     private UUID employeeId;
+    private UUID marketId;
+    private String marketName;
     private LocalDate date;
     private BigDecimal openingBalance;
     private BigDecimal collections;

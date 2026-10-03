@@ -1,6 +1,7 @@
 package com.dapfintech.employee.controller;
 
 import com.dapfintech.employee.dto.MarketDayBookResponse;
+import com.dapfintech.employee.dto.UpdateDayBookRequest;
 import com.dapfintech.employee.entity.DayBookTransaction;
 import com.dapfintech.employee.service.DayBookService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +63,31 @@ public class MarketDayBookController {
             @PathVariable UUID marketId,
             @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         MarketDayBookResponse response = dayBookService.reopenMarketDayBook(marketId, date);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/request-closure")
+    public ResponseEntity<MarketDayBookResponse> requestMarketClosure(
+            @PathVariable UUID marketId,
+            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        MarketDayBookResponse response = dayBookService.requestMarketClosure(marketId, date);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/cancel-closure")
+    public ResponseEntity<MarketDayBookResponse> cancelMarketClosure(
+            @PathVariable UUID marketId,
+            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        MarketDayBookResponse response = dayBookService.cancelMarketClosure(marketId, date);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping
+    public ResponseEntity<MarketDayBookResponse> updateMarketDayBook(
+            @PathVariable UUID marketId,
+            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestBody UpdateDayBookRequest request) {
+        MarketDayBookResponse response = dayBookService.updateMarketDayBook(marketId, date, request);
         return ResponseEntity.ok(response);
     }
 }

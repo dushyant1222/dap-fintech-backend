@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 
 public interface DayBookTransactionRepository extends JpaRepository<DayBookTransaction, UUID> {
     List<DayBookTransaction> findByEmployeeIdAndCreatedAtBetween(UUID employeeId, LocalDateTime start, LocalDateTime end);
+    List<DayBookTransaction> findByMarketIdAndCreatedAtBetween(UUID marketId, LocalDateTime start, LocalDateTime end);
     List<DayBookTransaction> findByRemarksContaining(String keyword);
     List<DayBookTransaction> findByDayBookId(UUID dayBookId);
+    List<DayBookTransaction> findByMarketDayBookId(UUID marketDayBookId);
 }

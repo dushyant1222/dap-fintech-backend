@@ -36,6 +36,9 @@ public interface DayBookService {
     MarketDayBookResponse approveMarketClosure(UUID marketId, LocalDate date);
     MarketDayBookResponse rejectMarketClosure(UUID marketId, LocalDate date);
     MarketDayBookResponse reopenMarketDayBook(UUID marketId, LocalDate date);
+    MarketDayBookResponse requestMarketClosure(UUID marketId, LocalDate date);
+    MarketDayBookResponse cancelMarketClosure(UUID marketId, LocalDate date);
+    MarketDayBookResponse updateMarketDayBook(UUID marketId, LocalDate date, UpdateDayBookRequest request);
     List<com.dapfintech.employee.entity.DayBookTransaction> getMarketTransactions(UUID marketId, LocalDate date);
 
     // Loan cleanup & sync

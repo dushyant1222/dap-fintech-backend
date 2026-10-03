@@ -44,7 +44,7 @@ public class InternalTransfer extends BaseEntity {
     private User sender;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "receiver_id", nullable = false)
+    @JoinColumn(name = "receiver_id")
     private User receiver;
 
     @ManyToOne(fetch = FetchType.LAZY)

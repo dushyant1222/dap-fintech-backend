@@ -16,6 +16,9 @@ public class DayBookTransaction {
     
     @Column(name = "employee_id", nullable = false)
     private UUID employeeId;
+
+    @Column(name = "market_id")
+    private UUID marketId;
     
     @Column(nullable = false)
     private String type;
@@ -31,4 +34,11 @@ public class DayBookTransaction {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "daybook_id")
     private DayBook dayBook;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "market_daybook_id")
+    private MarketDayBook marketDayBook;
+
+    @Transient
+    private String employeeName;
 }

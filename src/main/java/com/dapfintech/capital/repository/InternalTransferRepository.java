@@ -11,13 +11,20 @@ import com.dapfintech.capital.enums.TransferStatus;
 
 public interface InternalTransferRepository extends JpaRepository<InternalTransfer, UUID> {
     List<InternalTransfer> findByReceiverIdAndStatusOrderByTransferDateDesc(UUID receiverId, TransferStatus status);
+    List<InternalTransfer> findByReceiverMarketIdAndStatusOrderByTransferDateDesc(UUID marketId, TransferStatus status);
+    List<InternalTransfer> findByReceiverMarketIdInAndStatusOrderByTransferDateDesc(List<UUID> marketIds, TransferStatus status);
     List<InternalTransfer> findBySenderIdOrderByTransferDateDesc(UUID senderId);
     List<InternalTransfer> findByReceiverIdOrderByTransferDateDesc(UUID receiverId);
+    List<InternalTransfer> findBySenderMarketIdOrderByTransferDateDesc(UUID marketId);
+    List<InternalTransfer> findByReceiverMarketIdOrderByTransferDateDesc(UUID marketId);
 
     List<InternalTransfer> findByReceiverIdAndStatusAndTransferDateBetween(UUID receiverId, TransferStatus status, LocalDateTime start, LocalDateTime end);
     List<InternalTransfer> findBySenderIdAndStatusAndTransferDateBetween(UUID senderId, TransferStatus status, LocalDateTime start, LocalDateTime end);
 
-    // ── Dashboard aggregate queries (replaces findAll() loop) ──────────────
+    List<InternalTransfer> findByReceiverMarketIdAndStatusAndTransferDateBetween(UUID marketId, TransferStatus status, LocalDateTime start, LocalDateTime end);
+    List<InternalTransfer> findBySenderMarketIdAndStatusAndTransferDateBetween(UUID marketId, TransferStatus status, LocalDateTime start, LocalDateTime end);
+
+    // ── Dashboard aggregate queries ──────────────
     @Query(value = """
             SELECT COALESCE(SUM(t.amount), 0)
             FROM internal_transfers t

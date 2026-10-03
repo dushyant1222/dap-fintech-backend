@@ -4,18 +4,24 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import com.dapfintech.capital.enums.TransferStatus;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class InternalTransferResponse {
     private UUID id;
     private UUID senderId;
     private String senderName;
     private UUID receiverId;
     private String receiverName;
+    private UUID senderMarketId;
     private String senderMarketName;
+    private UUID receiverMarketId;
     private String receiverMarketName;
     private BigDecimal amount;
     private TransferStatus status;
