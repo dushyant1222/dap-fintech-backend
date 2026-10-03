@@ -27,6 +27,7 @@ public class EmployeeDayBookSummary {
     private BigDecimal outgoingTransfers;
     private BigDecimal cashOutgoingTransfers;
     private BigDecimal officeRemittance;
+    private BigDecimal transferToOthers;
     private BigDecimal closingBalance;
     private DayBookStatus status;
 }

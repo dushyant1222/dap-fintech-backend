@@ -1359,6 +1359,7 @@ public class ReportingServiceImpl implements ReportingService {
                 table.addCell("Loans Disbursed"); table.addCell(String.valueOf(db.getLoansDisbursed()));
                 table.addCell("Transfers Sent"); table.addCell(String.valueOf(db.getOutgoingTransfers()));
                 table.addCell("Office Remittance"); table.addCell(String.valueOf(db.getOfficeRemittance()));
+                table.addCell("Pay to Others"); table.addCell(String.valueOf(db.getTransferToOthers() != null ? db.getTransferToOthers() : 0));
                 table.addCell("Closing Balance"); table.addCell(String.valueOf(db.getClosingBalance()));
                 table.addCell("Status"); table.addCell(db.getStatus().name());
                 document.add(table);
@@ -1424,8 +1425,9 @@ public class ReportingServiceImpl implements ReportingService {
                 sheet.createRow(7).createCell(0).setCellValue("Loans Disbursed:"); sheet.getRow(7).createCell(1).setCellValue(db.getLoansDisbursed() != null ? db.getLoansDisbursed().doubleValue() : 0.0);
                 sheet.createRow(8).createCell(0).setCellValue("Transfers Sent:"); sheet.getRow(8).createCell(1).setCellValue(db.getOutgoingTransfers() != null ? db.getOutgoingTransfers().doubleValue() : 0.0);
                 sheet.createRow(9).createCell(0).setCellValue("Office Remittance:"); sheet.getRow(9).createCell(1).setCellValue(db.getOfficeRemittance() != null ? db.getOfficeRemittance().doubleValue() : 0.0);
-                sheet.createRow(10).createCell(0).setCellValue("Closing Balance:"); sheet.getRow(10).createCell(1).setCellValue(db.getClosingBalance() != null ? db.getClosingBalance().doubleValue() : 0.0);
-                sheet.createRow(11).createCell(0).setCellValue("Status:"); sheet.getRow(11).createCell(1).setCellValue(db.getStatus().name());
+                sheet.createRow(10).createCell(0).setCellValue("Pay to Others:"); sheet.getRow(10).createCell(1).setCellValue(db.getTransferToOthers() != null ? db.getTransferToOthers().doubleValue() : 0.0);
+                sheet.createRow(11).createCell(0).setCellValue("Closing Balance:"); sheet.getRow(11).createCell(1).setCellValue(db.getClosingBalance() != null ? db.getClosingBalance().doubleValue() : 0.0);
+                sheet.createRow(12).createCell(0).setCellValue("Status:"); sheet.getRow(12).createCell(1).setCellValue(db.getStatus().name());
             }
             
             Row row13 = sheet.createRow(13);

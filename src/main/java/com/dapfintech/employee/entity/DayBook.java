@@ -53,6 +53,9 @@ public class DayBook extends BaseEntity {
     @Column(name = "cash_outgoing_transfers")
     private BigDecimal cashOutgoingTransfers = BigDecimal.ZERO;
 
+    @Column(name = "transfer_to_others")
+    private BigDecimal transferToOthers = BigDecimal.ZERO;
+
     @Column(name = "closing_balance")
     private BigDecimal closingBalance = BigDecimal.ZERO;
 

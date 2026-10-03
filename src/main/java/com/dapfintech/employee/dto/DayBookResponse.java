@@ -21,6 +21,7 @@ public class DayBookResponse {
     private BigDecimal officeRemittance;
     private BigDecimal cashIncomingTransfers;
     private BigDecimal cashOutgoingTransfers;
+    private BigDecimal transferToOthers;
     private BigDecimal closingBalance;
     private DayBookStatus status;
     private Boolean previousDayClosed;

@@ -14,5 +14,5 @@ public class UpdateDayBookRequest {
     private BigDecimal outgoingTransfers;
     private BigDecimal cashOutgoingTransfers;
     private BigDecimal officeRemittance;
+    private BigDecimal transferToOthers;
 }
-

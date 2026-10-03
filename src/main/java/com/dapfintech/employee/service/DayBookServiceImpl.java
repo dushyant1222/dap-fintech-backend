@@ -416,6 +416,14 @@ public class DayBookServiceImpl implements DayBookService {
                 }
                 dayBook.setSpends(dayBook.getSpends().add(amount));
                 break;
+            case "TRANSFER_TO_OTHERS":
+            case "PAY_TO_OTHERS":
+                if (request.getRemarks() == null || request.getRemarks().trim().isEmpty()) {
+                    throw new RuntimeException("Remarks are mandatory for Transfer to Others (specify who to pay).");
+                }
+                if (dayBook.getTransferToOthers() == null) dayBook.setTransferToOthers(BigDecimal.ZERO);
+                dayBook.setTransferToOthers(dayBook.getTransferToOthers().add(amount));
+                break;
             case "COLLECTIONS":
                 dayBook.setCollections(dayBook.getCollections().add(amount));
                 break;
@@ -749,6 +757,7 @@ public class DayBookServiceImpl implements DayBookService {
         if (request.getCashIncomingTransfers() != null) dayBook.setCashIncomingTransfers(request.getCashIncomingTransfers());
         if (request.getOutgoingTransfers() != null) dayBook.setOutgoingTransfers(request.getOutgoingTransfers());
         if (request.getCashOutgoingTransfers() != null) dayBook.setCashOutgoingTransfers(request.getCashOutgoingTransfers());
+        if (request.getTransferToOthers() != null) dayBook.setTransferToOthers(request.getTransferToOthers());
 
         dayBook.setClosingBalance(calculateClosingBalance(dayBook));
         DayBook savedDayBook = dayBookRepository.save(dayBook);
@@ -948,6 +957,7 @@ public class DayBookServiceImpl implements DayBookService {
         if (dayBook.getOutgoingTransfers() == null) dayBook.setOutgoingTransfers(BigDecimal.ZERO);
         if (dayBook.getCashOutgoingTransfers() == null) dayBook.setCashOutgoingTransfers(BigDecimal.ZERO);
         if (dayBook.getOfficeRemittance() == null) dayBook.setOfficeRemittance(BigDecimal.ZERO);
+        if (dayBook.getTransferToOthers() == null) dayBook.setTransferToOthers(BigDecimal.ZERO);
 
         return dayBook.getOpeningBalance()
                 .add(dayBook.getCollections())
@@ -957,7 +967,8 @@ public class DayBookServiceImpl implements DayBookService {
                 .subtract(dayBook.getLoansDisbursed())
                 .subtract(dayBook.getOutgoingTransfers())
                 .subtract(dayBook.getCashOutgoingTransfers())
-                .subtract(dayBook.getOfficeRemittance());
+                .subtract(dayBook.getOfficeRemittance())
+                .subtract(dayBook.getTransferToOthers());
     }
 
     private DayBookResponse mapToResponse(DayBook dayBook) {
@@ -974,6 +985,7 @@ public class DayBookServiceImpl implements DayBookService {
         response.setOutgoingTransfers(dayBook.getOutgoingTransfers());
         response.setCashOutgoingTransfers(dayBook.getCashOutgoingTransfers());
         response.setOfficeRemittance(dayBook.getOfficeRemittance());
+        response.setTransferToOthers(dayBook.getTransferToOthers() != null ? dayBook.getTransferToOthers() : BigDecimal.ZERO);
         response.setClosingBalance(dayBook.getClosingBalance());
         response.setStatus(dayBook.getStatus());
 
@@ -1064,6 +1076,7 @@ public class DayBookServiceImpl implements DayBookService {
                         .outgoingTransfers(empDb.getOutgoingTransfers())
                         .cashOutgoingTransfers(empDb.getCashOutgoingTransfers())
                         .officeRemittance(empDb.getOfficeRemittance())
+                        .transferToOthers(empDb.getTransferToOthers() != null ? empDb.getTransferToOthers() : BigDecimal.ZERO)
                         .closingBalance(empDb.getClosingBalance())
                         .status(empDb.getStatus())
                         .build());
@@ -1143,6 +1156,7 @@ public class DayBookServiceImpl implements DayBookService {
                 .outgoingTransfers(mdb.getTotalOutgoingTransfers() != null ? mdb.getTotalOutgoingTransfers() : BigDecimal.ZERO)
                 .cashOutgoingTransfers(mdb.getTotalCashOutgoingTransfers() != null ? mdb.getTotalCashOutgoingTransfers() : BigDecimal.ZERO)
                 .officeRemittance(mdb.getTotalOfficeRemittance() != null ? mdb.getTotalOfficeRemittance() : BigDecimal.ZERO)
+                .transferToOthers(mdb.getTotalTransferToOthers() != null ? mdb.getTotalTransferToOthers() : BigDecimal.ZERO)
                 .closingBalance(mdb.getTotalClosingBalance() != null ? mdb.getTotalClosingBalance() : BigDecimal.ZERO)
                 .status(mdb.getStatus())
                 .previousDayClosed(prevClosed)
@@ -1254,6 +1268,7 @@ public class DayBookServiceImpl implements DayBookService {
         BigDecimal totalCashIn = BigDecimal.ZERO;
         BigDecimal totalOnlineOut = BigDecimal.ZERO;
         BigDecimal totalCashOut = BigDecimal.ZERO;
+        BigDecimal totalTransferToOthers = BigDecimal.ZERO;
 
         for (UUID empId : empIds) {
             Optional<DayBook> empDbOpt = dayBookRepository.findByEmployeeIdAndDate(empId, date);
@@ -1265,6 +1280,7 @@ public class DayBookServiceImpl implements DayBookService {
                 if (edb.getCashIncomingTransfers() != null) totalCashIn = totalCashIn.add(edb.getCashIncomingTransfers());
                 if (edb.getOutgoingTransfers() != null) totalOnlineOut = totalOnlineOut.add(edb.getOutgoingTransfers());
                 if (edb.getCashOutgoingTransfers() != null) totalCashOut = totalCashOut.add(edb.getCashOutgoingTransfers());
+                if (edb.getTransferToOthers() != null) totalTransferToOthers = totalTransferToOthers.add(edb.getTransferToOthers());
             }
         }
 
@@ -1274,6 +1290,7 @@ public class DayBookServiceImpl implements DayBookService {
         mdb.setTotalCashIncomingTransfers(totalCashIn);
         mdb.setTotalOutgoingTransfers(totalOnlineOut);
         mdb.setTotalCashOutgoingTransfers(totalCashOut);
+        mdb.setTotalTransferToOthers(totalTransferToOthers);
 
         // Calculate opening balance from previous market daybook
         List<MarketDayBook> pastBooks = marketDayBookRepository.findByMarketIdOrderByDateDesc(marketId);
@@ -1295,7 +1312,8 @@ public class DayBookServiceImpl implements DayBookService {
                 .subtract(totalDisbursed)
                 .subtract(totalOnlineOut)
                 .subtract(totalCashOut)
-                .subtract(totalOfficeRemit);
+                .subtract(totalOfficeRemit)
+                .subtract(totalTransferToOthers);
 
         mdb.setTotalClosingBalance(closing);
         marketDayBookRepository.save(mdb);
@@ -1320,7 +1338,8 @@ public class DayBookServiceImpl implements DayBookService {
                         .subtract(nextMdb.getTotalLoansDisbursed() != null ? nextMdb.getTotalLoansDisbursed() : BigDecimal.ZERO)
                         .subtract(nextMdb.getTotalOutgoingTransfers() != null ? nextMdb.getTotalOutgoingTransfers() : BigDecimal.ZERO)
                         .subtract(nextMdb.getTotalCashOutgoingTransfers() != null ? nextMdb.getTotalCashOutgoingTransfers() : BigDecimal.ZERO)
-                        .subtract(nextMdb.getTotalOfficeRemittance() != null ? nextMdb.getTotalOfficeRemittance() : BigDecimal.ZERO);
+                        .subtract(nextMdb.getTotalOfficeRemittance() != null ? nextMdb.getTotalOfficeRemittance() : BigDecimal.ZERO)
+                        .subtract(nextMdb.getTotalTransferToOthers() != null ? nextMdb.getTotalTransferToOthers() : BigDecimal.ZERO);
                 nextMdb.setTotalClosingBalance(c);
                 marketDayBookRepository.save(nextMdb);
                 prevClosing = nextMdb.getTotalClosingBalance();

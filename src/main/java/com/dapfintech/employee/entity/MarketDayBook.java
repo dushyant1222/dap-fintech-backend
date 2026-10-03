@@ -53,6 +53,9 @@ public class MarketDayBook extends BaseEntity {
     @Column(name = "total_office_remittance")
     private BigDecimal totalOfficeRemittance = BigDecimal.ZERO;
 
+    @Column(name = "total_transfer_to_others")
+    private BigDecimal totalTransferToOthers = BigDecimal.ZERO;
+
     @Column(name = "total_closing_balance")
     private BigDecimal totalClosingBalance = BigDecimal.ZERO;
 

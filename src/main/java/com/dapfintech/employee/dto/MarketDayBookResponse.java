@@ -29,6 +29,7 @@ public class MarketDayBookResponse {
     private BigDecimal outgoingTransfers;
     private BigDecimal cashOutgoingTransfers;
     private BigDecimal officeRemittance;
+    private BigDecimal transferToOthers;
     private BigDecimal closingBalance;
     private DayBookStatus status;
     private boolean previousDayClosed;
