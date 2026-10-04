@@ -73,6 +73,7 @@ public class LoanCollectionServiceImpl
     private final SyncLogService syncLogService;
     private final DayBookRepository dayBookRepository;
     private final com.dapfintech.employee.service.DayBookService dayBookService;
+    private final com.dapfintech.employee.repository.DayBookTransactionRepository dayBookTransactionRepository;
     
     @Override
     public EmployeeCollectionOverviewResponse
@@ -1196,6 +1197,292 @@ public class LoanCollectionServiceImpl
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void deleteCollection(UUID collectionId) {
+        User loggedInUser = getLoggedInUser();
+        if (!loggedInUser.isAdmin()) {
+            throw new RuntimeException("Only administrators can delete collections");
+        }
+
+        LoanCollection collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new RuntimeException("Collection record not found with ID: " + collectionId));
+
+        Loan loan = collection.getLoan();
+        BigDecimal amountToRollback = collection.getCollectedAmount() != null
+                ? collection.getCollectedAmount() : BigDecimal.ZERO;
+
+        log.info("Deleting collection {} of amount {} for loan {}", collectionId, amountToRollback, loan != null ? loan.getLoanCode() : "-");
+
+        // 1. Rollback schedule payments in reverse order (installmentNumber DESC)
+        if (loan != null && amountToRollback.compareTo(BigDecimal.ZERO) > 0) {
+            List<LoanRepaymentSchedule> schedules = scheduleRepository
+                    .findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
+
+            // Reverse order so latest payments are undone first
+            List<LoanRepaymentSchedule> reversedSchedules = new ArrayList<>(schedules);
+            java.util.Collections.reverse(reversedSchedules);
+
+            BigDecimal remainingRollback = amountToRollback;
+            List<LoanRepaymentSchedule> toUpdate = new ArrayList<>();
+
+            for (LoanRepaymentSchedule schedule : reversedSchedules) {
+                if (remainingRollback.compareTo(BigDecimal.ZERO) <= 0) {
+                    break;
+                }
+                BigDecimal paid = schedule.getPaidAmount() != null ? schedule.getPaidAmount() : BigDecimal.ZERO;
+                if (paid.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+
+                BigDecimal deduction = remainingRollback.min(paid);
+                schedule.setPaidAmount(paid.subtract(deduction));
+                schedule.setOutstandingAmount(
+                        (schedule.getOutstandingAmount() != null ? schedule.getOutstandingAmount() : BigDecimal.ZERO).add(deduction)
+                );
+
+                if (schedule.getDueDate() != null && schedule.getDueDate().isBefore(java.time.LocalDate.now())) {
+                    schedule.setRepaymentStatus(RepaymentStatus.OVERDUE);
+                } else {
+                    schedule.setRepaymentStatus(RepaymentStatus.PENDING);
+                }
+
+                toUpdate.add(schedule);
+                remainingRollback = remainingRollback.subtract(deduction);
+            }
+
+            if (!toUpdate.isEmpty()) {
+                scheduleRepository.saveAll(toUpdate);
+            }
+
+            // If loan was CLOSED, reopen it to ACTIVE
+            if (loan.getLoanStatus() == LoanStatus.CLOSED) {
+                loan.setLoanStatus(LoanStatus.ACTIVE);
+                loanRepository.save(loan);
+                loanClosureRepository.findByLoanId(loan.getId()).ifPresent(loanClosureRepository::delete);
+            }
+        }
+
+        // 2. DayBook resync & transaction removal
+        UUID targetMarketId = null;
+        if (loan != null && loan.getCustomer() != null && loan.getCustomer().getMarket() != null) {
+            targetMarketId = loan.getCustomer().getMarket().getId();
+        } else if (collection.getCollectedBy() != null) {
+            List<EmployeeMarketAssignment> empAsgs = assignmentRepository.findByEmployeeId(collection.getCollectedBy().getId());
+            if (empAsgs != null && !empAsgs.isEmpty() && empAsgs.get(0).getMarket() != null) {
+                targetMarketId = empAsgs.get(0).getMarket().getId();
+            }
+        }
+
+        java.time.LocalDate colDate = collection.getCollectionDate() != null
+                ? collection.getCollectionDate().toLocalDate()
+                : java.time.LocalDate.now();
+
+        // Remove matching DayBook transaction if present
+        if (targetMarketId != null && loan != null) {
+            try {
+                java.time.LocalDateTime start = colDate.atStartOfDay();
+                java.time.LocalDateTime end = colDate.plusDays(1).atStartOfDay();
+                List<com.dapfintech.employee.entity.DayBookTransaction> txs = dayBookTransactionRepository
+                        .findByMarketIdAndCreatedAtBetween(targetMarketId, start, end);
+                for (com.dapfintech.employee.entity.DayBookTransaction tx : txs) {
+                    if ("COLLECTIONS".equalsIgnoreCase(tx.getType()) &&
+                            tx.getRemarks() != null && tx.getRemarks().contains(loan.getLoanCode()) &&
+                            tx.getAmount() != null && tx.getAmount().compareTo(amountToRollback) == 0) {
+                        dayBookTransactionRepository.delete(tx);
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not delete matching DayBookTransaction: {}", e.getMessage());
+            }
+        }
+
+        // 3. Delete the collection record
+        collectionRepository.delete(collection);
+
+        // 4. Sync Market DayBook for that date
+        if (targetMarketId != null) {
+            try {
+                dayBookService.syncMarketDayBook(targetMarketId, colDate);
+            } catch (Exception e) {
+                log.error("Failed to sync Market DayBook after collection deletion: {}", e.getMessage(), e);
+            }
+        }
+
+        // 5. Audit Log
+        String adminLog = loggedInUser.getFullName() != null ? loggedInUser.getFullName() : "Admin";
+        String loanCode = loan != null ? loan.getLoanCode() : "-";
+        auditLogService.log(
+                adminLog,
+                "Admin deleted collection #" + (collection.getReceiptNumber() != null ? collection.getReceiptNumber() : collectionId) + " of ₹" + amountToRollback + " for loan " + loanCode,
+                "COLLECTION_DELETED",
+                collectionId.toString()
+        );
+    }
+
+    @Override
+    @Transactional
+    public CollectionResponse updateCollection(UUID collectionId, com.dapfintech.loan.dto.request.UpdateCollectionRequest request) {
+        User loggedInUser = getLoggedInUser();
+        if (!loggedInUser.isAdmin()) {
+            throw new RuntimeException("Only administrators can edit collections");
+        }
+
+        LoanCollection collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new RuntimeException("Collection record not found with ID: " + collectionId));
+
+        if (request.getCollectedAmount() == null || request.getCollectedAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Updated collection amount must be greater than zero");
+        }
+
+        Loan loan = collection.getLoan();
+        BigDecimal oldAmount = collection.getCollectedAmount() != null ? collection.getCollectedAmount() : BigDecimal.ZERO;
+        BigDecimal newAmount = request.getCollectedAmount();
+        BigDecimal diff = newAmount.subtract(oldAmount);
+
+        java.time.LocalDate oldColDate = collection.getCollectionDate() != null
+                ? collection.getCollectionDate().toLocalDate()
+                : java.time.LocalDate.now();
+
+        java.time.LocalDate newColDate = request.getCollectionDate() != null
+                ? request.getCollectionDate().toLocalDate()
+                : oldColDate;
+
+        log.info("Updating collection {}: oldAmount={}, newAmount={}, diff={}", collectionId, oldAmount, newAmount, diff);
+
+        // Adjust schedules based on difference
+        if (loan != null && diff.compareTo(BigDecimal.ZERO) != 0) {
+            if (diff.compareTo(BigDecimal.ZERO) < 0) {
+                // Amount was REDUCED: Rollback abs(diff) from schedules in reverse order
+                BigDecimal amountToRollback = diff.abs();
+                List<LoanRepaymentSchedule> schedules = scheduleRepository
+                        .findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
+                List<LoanRepaymentSchedule> reversed = new ArrayList<>(schedules);
+                java.util.Collections.reverse(reversed);
+
+                List<LoanRepaymentSchedule> toUpdate = new ArrayList<>();
+                for (LoanRepaymentSchedule schedule : reversed) {
+                    if (amountToRollback.compareTo(BigDecimal.ZERO) <= 0) break;
+                    BigDecimal paid = schedule.getPaidAmount() != null ? schedule.getPaidAmount() : BigDecimal.ZERO;
+                    if (paid.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    BigDecimal deduction = amountToRollback.min(paid);
+                    schedule.setPaidAmount(paid.subtract(deduction));
+                    schedule.setOutstandingAmount(
+                            (schedule.getOutstandingAmount() != null ? schedule.getOutstandingAmount() : BigDecimal.ZERO).add(deduction)
+                    );
+                    if (schedule.getDueDate() != null && schedule.getDueDate().isBefore(java.time.LocalDate.now())) {
+                        schedule.setRepaymentStatus(RepaymentStatus.OVERDUE);
+                    } else {
+                        schedule.setRepaymentStatus(RepaymentStatus.PENDING);
+                    }
+                    toUpdate.add(schedule);
+                    amountToRollback = amountToRollback.subtract(deduction);
+                }
+                if (!toUpdate.isEmpty()) {
+                    scheduleRepository.saveAll(toUpdate);
+                }
+                // If loan was closed, reopen it
+                if (loan.getLoanStatus() == LoanStatus.CLOSED) {
+                    loan.setLoanStatus(LoanStatus.ACTIVE);
+                    loanRepository.save(loan);
+                    loanClosureRepository.findByLoanId(loan.getId()).ifPresent(loanClosureRepository::delete);
+                }
+            } else {
+                // Amount was INCREASED: Apply diff to unpaid schedules in forward order
+                BigDecimal amountToApply = diff;
+                List<LoanRepaymentSchedule> unpaid = scheduleRepository
+                        .findByLoanIdOrderByInstallmentNumberAsc(loan.getId())
+                        .stream()
+                        .filter(s -> s.getRepaymentStatus() != RepaymentStatus.PAID)
+                        .toList();
+
+                List<LoanRepaymentSchedule> toUpdate = new ArrayList<>();
+                for (LoanRepaymentSchedule schedule : unpaid) {
+                    if (amountToApply.compareTo(BigDecimal.ZERO) <= 0) break;
+                    BigDecimal outstanding = schedule.getOutstandingAmount() != null ? schedule.getOutstandingAmount() : BigDecimal.ZERO;
+                    if (outstanding.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    BigDecimal apply = amountToApply.min(outstanding);
+                    schedule.setPaidAmount((schedule.getPaidAmount() != null ? schedule.getPaidAmount() : BigDecimal.ZERO).add(apply));
+                    schedule.setOutstandingAmount(outstanding.subtract(apply));
+                    if (schedule.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                        schedule.setRepaymentStatus(RepaymentStatus.PAID);
+                    }
+                    toUpdate.add(schedule);
+                    amountToApply = amountToApply.subtract(apply);
+                }
+                if (!toUpdate.isEmpty()) {
+                    scheduleRepository.saveAll(toUpdate);
+                }
+
+                // Check if all schedules are now paid
+                BigDecimal totalOutstanding = scheduleRepository.getSumOutstandingByLoan(loan.getId());
+                if (totalOutstanding == null || totalOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                    loan.setLoanStatus(LoanStatus.CLOSED);
+                    loanRepository.save(loan);
+                    if (!loanClosureRepository.existsByLoanId(loan.getId())) {
+                        LoanClosure closure = LoanClosure.builder()
+                                .loan(loan)
+                                .closureDate(java.time.LocalDateTime.now())
+                                .remarks("Auto closed after collection update")
+                                .build();
+                        loanClosureRepository.save(closure);
+                    }
+                }
+            }
+        }
+
+        // Update collection fields
+        collection.setCollectedAmount(newAmount);
+        if (request.getCollectionMode() != null) {
+            collection.setCollectionMode(request.getCollectionMode());
+        }
+        if (request.getCollectionDate() != null) {
+            collection.setCollectionDate(request.getCollectionDate());
+        }
+        if (request.getRemarks() != null) {
+            collection.setRemarks(request.getRemarks());
+        }
+        collection = collectionRepository.save(collection);
+
+        // DayBook resync
+        UUID targetMarketId = null;
+        if (loan != null && loan.getCustomer() != null && loan.getCustomer().getMarket() != null) {
+            targetMarketId = loan.getCustomer().getMarket().getId();
+        } else if (collection.getCollectedBy() != null) {
+            List<EmployeeMarketAssignment> empAsgs = assignmentRepository.findByEmployeeId(collection.getCollectedBy().getId());
+            if (empAsgs != null && !empAsgs.isEmpty() && empAsgs.get(0).getMarket() != null) {
+                targetMarketId = empAsgs.get(0).getMarket().getId();
+            }
+        }
+
+        if (targetMarketId != null) {
+            try {
+                // If date changed, sync old date DayBook first
+                if (!oldColDate.isEqual(newColDate)) {
+                    dayBookService.syncMarketDayBook(targetMarketId, oldColDate);
+                }
+                dayBookService.syncMarketDayBook(targetMarketId, newColDate);
+            } catch (Exception e) {
+                log.error("Failed to sync Market DayBook after collection update: {}", e.getMessage(), e);
+            }
+        }
+
+        // Audit Log
+        String adminLog = loggedInUser.getFullName() != null ? loggedInUser.getFullName() : "Admin";
+        String loanCode = loan != null ? loan.getLoanCode() : "-";
+        auditLogService.log(
+                adminLog,
+                "Admin updated collection #" + (collection.getReceiptNumber() != null ? collection.getReceiptNumber() : collectionId) + " from ₹" + oldAmount + " to ₹" + newAmount + " for loan " + loanCode,
+                "COLLECTION_UPDATED",
+                collectionId.toString()
+        );
+
+        return mapper.toResponse(collection);
     }
     
     ////////////////////////////////////////////////////////////////////////////////////////

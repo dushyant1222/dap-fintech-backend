@@ -17,6 +17,12 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 	
 	List<Notification> findAllByOrderByCreatedAtDesc();
 
+	@Query("SELECT n FROM Notification n WHERE (n.targetUser.id = :userId OR n.targetRole = :role OR (n.targetUser IS NULL AND n.targetRole IS NULL)) ORDER BY n.createdAt DESC")
+	List<Notification> findForUserOrRole(UUID userId, String role);
+
+	@Query("SELECT n FROM Notification n WHERE (n.targetRole = 'ADMIN' OR (n.targetUser IS NULL AND n.targetRole IS NULL)) ORDER BY n.createdAt DESC")
+	List<Notification> findForAdmin();
+
 	@Modifying
 	@Transactional
 	@Query("DELETE FROM Notification n WHERE n.createdAt < :cutoff")

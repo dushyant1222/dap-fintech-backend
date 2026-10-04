@@ -38,4 +38,11 @@ public class Notification {
     // UUID of the related entity (loanId, customerId, enquiryId, etc.)
     @Column(name = "reference_id")
     private UUID referenceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "target_user_id")
+    private com.dapfintech.auth.entity.User targetUser;
+
+    @Column(name = "target_role", length = 50)
+    private String targetRole;
 }

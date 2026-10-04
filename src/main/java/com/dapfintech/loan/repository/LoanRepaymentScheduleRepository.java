@@ -322,5 +322,40 @@ public interface LoanRepaymentScheduleRepository
             WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
             """, nativeQuery = true)
     BigDecimal getTotalScheduledLoanAmount();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.installment_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            AND (l.loan_type IS NULL OR l.loan_type != 'EMERGENCY')
+            """, nativeQuery = true)
+    BigDecimal getRegularScheduledLoanAmount();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.installment_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            AND l.loan_type = 'EMERGENCY'
+            """, nativeQuery = true)
+    BigDecimal getEmergencyAccruedInterest();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.interest_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE s.repayment_status = 'PAID'
+            AND (l.loan_type IS NULL OR l.loan_type != 'EMERGENCY')
+            """, nativeQuery = true)
+    BigDecimal getRegularInterestCollected();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(s.paid_amount), 0)
+            FROM loan_repayment_schedules s
+            JOIN loans l ON s.loan_id = l.id
+            WHERE l.loan_type = 'EMERGENCY'
+            """, nativeQuery = true)
+    BigDecimal getEmergencyInterestCollected();
 }
 

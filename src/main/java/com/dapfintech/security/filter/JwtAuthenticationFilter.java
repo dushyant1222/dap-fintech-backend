@@ -63,7 +63,12 @@ public class JwtAuthenticationFilter
             // =========================================
 
             String jwt =
-                    authHeader.substring(7);
+                    authHeader.substring(7).trim();
+
+            if (jwt.isEmpty() || jwt.equalsIgnoreCase("null") || jwt.split("\\.").length != 3) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             String mobileNumber =
                     jwtService.extractUsername(jwt);

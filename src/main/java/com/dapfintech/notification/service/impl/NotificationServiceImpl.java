@@ -75,6 +75,8 @@ public class NotificationServiceImpl implements NotificationService {
 				.createdAt(LocalDateTime.now())
 				.navigationType(navigationType != null ? navigationType : "GENERAL")
 				.referenceId(referenceId)
+				.targetUser(targetUser)
+				.targetRole(targetUser != null && targetUser.getRole() != null ? targetUser.getRole().getRoleName() : null)
 				.build();
 		notificationRepository.save(notification);
 
@@ -91,7 +93,16 @@ public class NotificationServiceImpl implements NotificationService {
 	@Override
 	@Transactional
     public void notifyAllAdmins(String title, String message, String navigationType, UUID referenceId) {
-        createNotification(title, message, navigationType, referenceId);
+        Notification notification = Notification.builder()
+				.title(title)
+				.message(message)
+				.isRead(false)
+				.createdAt(LocalDateTime.now())
+				.navigationType(navigationType != null ? navigationType : "GENERAL")
+				.referenceId(referenceId)
+				.targetRole("ADMIN")
+				.build();
+		notificationRepository.save(notification);
         
         try {
             List<User> admins = userRepository.findByRoleRoleName("ADMIN");
@@ -107,8 +118,29 @@ public class NotificationServiceImpl implements NotificationService {
 
 	@Override
 	public List<NotificationResponse> getAllNotifications(){
-		return notificationRepository.findAllByOrderByCreatedAtDesc()
-				.stream()
+		List<Notification> list;
+		try {
+			org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+			if (auth != null && auth.getName() != null) {
+				java.util.Optional<User> optUser = userRepository.findByMobileNumber(auth.getName());
+				if (optUser.isPresent()) {
+					User user = optUser.get();
+					if (user.isAdmin()) {
+						list = notificationRepository.findForAdmin();
+					} else {
+						list = notificationRepository.findForUserOrRole(user.getId(), "EMPLOYEE");
+					}
+				} else {
+					list = notificationRepository.findAllByOrderByCreatedAtDesc();
+				}
+			} else {
+				list = notificationRepository.findAllByOrderByCreatedAtDesc();
+			}
+		} catch (Exception e) {
+			list = notificationRepository.findAllByOrderByCreatedAtDesc();
+		}
+
+		return list.stream()
 				.map(n -> NotificationResponse
 						.builder()
 						.id(n.getId())
@@ -177,8 +209,8 @@ public class NotificationServiceImpl implements NotificationService {
             if (referenceId != null) data.put("referenceId", referenceId.toString());
             if (!data.isEmpty()) body.put("data", data);
             
-            body.put("android_sound", "sword");
-            body.put("existing_android_channel_id", "sword_channel");
+            body.put("android_sound", "hooter");
+            body.put("existing_android_channel_id", "hooter_channel");
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
             String responseBody = restTemplate.postForObject(url, request, String.class);

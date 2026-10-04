@@ -33,4 +33,11 @@ public interface LoanCollectionService {
     EmployeeCollectionOverviewResponse getEmployeeCollectionOverview(
             UUID employeeId
     );
+
+    void deleteCollection(UUID collectionId);
+
+    CollectionResponse updateCollection(
+            UUID collectionId,
+            com.dapfintech.loan.dto.request.UpdateCollectionRequest request
+    );
 }

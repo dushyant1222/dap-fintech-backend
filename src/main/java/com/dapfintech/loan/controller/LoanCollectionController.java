@@ -256,4 +256,34 @@ public class LoanCollectionController {
                 )
         );
     }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{collectionId}")
+    public ResponseEntity<ApiResponse<CollectionResponse>> updateCollection(
+            @PathVariable UUID collectionId,
+            @RequestBody com.dapfintech.loan.dto.request.UpdateCollectionRequest request
+    ) {
+        CollectionResponse response = service.updateCollection(collectionId, request);
+        return ResponseEntity.ok(
+                ApiResponse.<CollectionResponse>builder()
+                        .success(true)
+                        .message("Collection updated successfully")
+                        .data(response)
+                        .build()
+        );
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/{collectionId}")
+    public ResponseEntity<ApiResponse<Void>> deleteCollection(
+            @PathVariable UUID collectionId
+    ) {
+        service.deleteCollection(collectionId);
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Collection deleted and loan values restored successfully")
+                        .build()
+        );
+    }
 }

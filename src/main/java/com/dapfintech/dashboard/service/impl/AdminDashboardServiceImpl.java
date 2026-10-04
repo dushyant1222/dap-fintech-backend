@@ -196,9 +196,20 @@ public class AdminDashboardServiceImpl
             }
         }
 
-        // ── 4. Interest (SQL aggregates, no schedule loop) ───────────────────
-        BigDecimal totalInterestExpected  = orZero(loanRepository.getTotalInterestExpected());
-        BigDecimal totalInterestCollected = orZero(loanRepository.getTotalInterestCollected());
+        // ── 4. Interest & Profit (Separated for Regular vs Emergency loans) ──
+        BigDecimal regularDisbursed = orZero(loanRepository.getRegularDisbursedPrincipal());
+        BigDecimal regularScheduledLoanAmount = orZero(scheduleRepository.getRegularScheduledLoanAmount());
+        BigDecimal emergencyAccruedInterest = orZero(scheduleRepository.getEmergencyAccruedInterest());
+
+        BigDecimal regularExpectedProfit = regularScheduledLoanAmount.compareTo(regularDisbursed) > 0
+                ? regularScheduledLoanAmount.subtract(regularDisbursed)
+                : BigDecimal.ZERO;
+
+        BigDecimal totalInterestExpected = regularExpectedProfit.add(emergencyAccruedInterest);
+
+        BigDecimal regularInterestCollected = orZero(scheduleRepository.getRegularInterestCollected());
+        BigDecimal emergencyInterestCollected = orZero(scheduleRepository.getEmergencyInterestCollected());
+        BigDecimal totalInterestCollected = regularInterestCollected.add(emergencyInterestCollected);
 
         // ── 5. Collections total (single query) ──────────────────────────────
         BigDecimal totalCollections = orZero(collectionRepository.getTotalCollections());

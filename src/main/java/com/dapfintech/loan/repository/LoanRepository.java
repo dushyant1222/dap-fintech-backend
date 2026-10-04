@@ -148,6 +148,32 @@ public interface LoanRepository
                 END
             ), 0)
             FROM loans l
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            AND (l.loan_type IS NULL OR l.loan_type != 'EMERGENCY')
+            """, nativeQuery = true)
+    BigDecimal getRegularDisbursedPrincipal();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            FROM loans l
+            WHERE l.loan_status IN ('ACTIVE','APPROVED','CLOSED')
+            AND l.loan_type = 'EMERGENCY'
+            """, nativeQuery = true)
+    BigDecimal getEmergencyDisbursedPrincipal();
+
+    @Query(value = """
+            SELECT COALESCE(SUM(
+                CASE WHEN l.approved_amount IS NOT NULL
+                     THEN l.approved_amount
+                     ELSE COALESCE(l.loan_amount, 0)
+                END
+            ), 0)
+            FROM loans l
             WHERE l.loan_status IN ('ACTIVE','APPROVED')
             """, nativeQuery = true)
     BigDecimal getMarketBalance();

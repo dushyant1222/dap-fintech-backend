@@ -199,10 +199,31 @@ public class CapitalServiceImpl implements CapitalService {
 
         BigDecimal expectedTotalReturn = orZero(loanRepaymentScheduleRepository.getTotalOutstandingReceivable());
 
-        // Actual Business Growth calculations:
-        BigDecimal totalScheduledLoanAmount = orZero(loanRepaymentScheduleRepository.getTotalScheduledLoanAmount());
-        BigDecimal totalInterestExpected = orZero(loanRepository.getTotalInterestExpected());
-        BigDecimal totalInterestCollected = orZero(loanRepository.getTotalInterestCollected());
+        // Actual Business Growth calculations (Profit = Total Loan Amount to be recovered - Disbursed Loan):
+        BigDecimal regularDisbursed = orZero(loanRepository.getRegularDisbursedPrincipal());
+        BigDecimal emergencyDisbursed = orZero(loanRepository.getEmergencyDisbursedPrincipal());
+
+        BigDecimal regularScheduledLoanAmount = orZero(loanRepaymentScheduleRepository.getRegularScheduledLoanAmount());
+        BigDecimal emergencyAccruedInterest = orZero(loanRepaymentScheduleRepository.getEmergencyAccruedInterest());
+
+        // For Regular loans: Profit = Scheduled EMI Total - Disbursed Principal
+        BigDecimal regularExpectedProfit = regularScheduledLoanAmount.compareTo(regularDisbursed) > 0
+                ? regularScheduledLoanAmount.subtract(regularDisbursed)
+                : BigDecimal.ZERO;
+
+        // For Emergency loans: Profit = Daily Accrued/Scheduled Interest
+        BigDecimal emergencyExpectedProfit = emergencyAccruedInterest;
+
+        // Total recoverable across all loans = Regular Scheduled + (Emergency Principal + Emergency Interest)
+        BigDecimal totalRecoverable = regularScheduledLoanAmount.add(emergencyDisbursed).add(emergencyAccruedInterest);
+
+        // Total Expected Interest/Growth from loans
+        BigDecimal totalInterestExpected = regularExpectedProfit.add(emergencyExpectedProfit);
+
+        // Realized interest collected from both regular and emergency loans
+        BigDecimal regularInterestCollected = orZero(loanRepaymentScheduleRepository.getRegularInterestCollected());
+        BigDecimal emergencyInterestCollected = orZero(loanRepaymentScheduleRepository.getEmergencyInterestCollected());
+        BigDecimal totalInterestCollected = regularInterestCollected.add(emergencyInterestCollected);
 
         BigDecimal chargesAndPenalties = BigDecimal.ZERO;
         List<Object[]> chargeRows = loanChargeRepository.getSumChargesByType();
@@ -214,13 +235,8 @@ public class CapitalServiceImpl implements CapitalService {
             }
         }
 
-        // Pure interest difference: Total Loan Amount to be collected - Disbursed Amount
-        BigDecimal interestGrowth = totalScheduledLoanAmount.compareTo(totalDisbursed) > 0
-                ? totalScheduledLoanAmount.subtract(totalDisbursed)
-                : totalInterestExpected;
-
-        // Actual Capital Growth = Total Interest + Charges & Penalties
-        BigDecimal capitalGrowth = interestGrowth.add(chargesAndPenalties);
+        // Actual Capital Growth = Expected Interest + Charges & Penalties
+        BigDecimal capitalGrowth = totalInterestExpected.add(chargesAndPenalties);
 
         // Realized Growth = Interest Collected + Charges - Expenses
         BigDecimal realizedGrowth = totalInterestCollected.add(chargesAndPenalties).subtract(totalExpenses);
@@ -235,7 +251,7 @@ public class CapitalServiceImpl implements CapitalService {
                 .totalExpenses(totalExpenses)
                 .vaultAvailableCash(vaultAvailableCash)
                 .expectedTotalReturn(expectedTotalReturn)
-                .totalLoanAmount(totalScheduledLoanAmount)
+                .totalLoanAmount(totalRecoverable)
                 .totalInterestExpected(totalInterestExpected)
                 .totalInterestCollected(totalInterestCollected)
                 .totalChargesAndPenalties(chargesAndPenalties)
