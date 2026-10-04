@@ -26,6 +26,16 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
 	}
 
+	@ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+	public ResponseEntity<ApiResponse<Object>> handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+		ApiResponse<Object> response = ApiResponse.builder()
+				.success(false)
+				.message("Endpoint not found: " + ex.getResourcePath())
+				.data(null)
+				.build();
+		return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+	}
+
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ApiResponse<Object>> handleAllExceptions(Exception ex){
 		System.err.println("=== UNHANDLED EXCEPTION CAUGHT IN GLOBAL EXCEPTION HANDLER ===");

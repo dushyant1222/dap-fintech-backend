@@ -12,7 +12,7 @@ import com.dapfintech.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/v1/notifications")
+@RequestMapping({"/api/v1/notifications", "/notifications"})
 @RequiredArgsConstructor
 public class NotificationController {
 	
