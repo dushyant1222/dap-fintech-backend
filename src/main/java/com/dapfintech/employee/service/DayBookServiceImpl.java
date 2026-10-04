@@ -291,16 +291,28 @@ public class DayBookServiceImpl implements DayBookService {
                         return marketDayBookRepository.findByMarketIdAndDate(marketId, date).get();
                     });
 
+            // Sequential DayBook rule: If any past MarketDayBook before `date` is not closed, no values can go into `date`'s DayBook!
+            List<MarketDayBook> pastBooks = marketDayBookRepository.findByMarketIdOrderByDateDesc(marketId);
+            MarketDayBook unclosedPast = pastBooks.stream()
+                    .filter(pb -> pb.getDate().isBefore(date) && pb.getStatus() != DayBookStatus.CLOSED)
+                    .findFirst()
+                    .orElse(null);
+
+            if (unclosedPast != null) {
+                throw new RuntimeException("Cannot add transaction to DayBook for " + date +
+                        " because previous Market DayBook for " + unclosedPast.getDate() +
+                        " is not closed yet. Please close " + unclosedPast.getDate() + " first.");
+            }
+
             if (mdb.getStatus() == DayBookStatus.CLOSED) {
-                LocalDate nextOpenDate = getActiveMarketDayBookDate(marketId);
-                if (!nextOpenDate.equals(date)) {
-                    return addTransactionForDate(employeeId, nextOpenDate, request);
+                // If this is a collection, allow posting it to this date and propagate balances forward
+                if (!type.equals("COLLECTIONS")) {
+                    throw new RuntimeException("Cannot add transaction to a closed Market DayBook for " + date + ".");
                 }
-                throw new RuntimeException("Cannot add transaction to a closed Market DayBook for " + date + ".");
             }
 
             boolean isTransfer = type.contains("TRANSFER") || type.contains("REMITTANCE");
-            if (mdb.getStatus() != DayBookStatus.OPEN && !isTransfer) {
+            if (mdb.getStatus() == DayBookStatus.PENDING_CLOSURE && !isTransfer && !type.equals("COLLECTIONS")) {
                 throw new RuntimeException("Cannot add transaction to a daybook that is pending closure.");
             }
 

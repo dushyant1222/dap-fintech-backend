@@ -52,7 +52,9 @@ import com.dapfintech.loan.dto.response.OverdueCollectionResponse;
 import com.dapfintech.report.projection.OverdueCustomerProjection;
 import jakarta.persistence.Id;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LoanCollectionServiceImpl
@@ -994,23 +996,37 @@ public class LoanCollectionServiceImpl
             targetEmployee = loan.getCreatedBy();
         }
 
-        java.time.LocalDate activeColDate = dayBookService.getActiveDayBookDate(
-                targetEmployee != null ? targetEmployee.getId() : (loggedInEmployee != null ? loggedInEmployee.getId() : null)
-        );
-
         java.time.LocalDateTime colDateTime;
         if (request.getCollectionDate() != null) {
             colDateTime = request.getCollectionDate();
             if (colDateTime.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)) {
                 colDateTime = colDateTime.toLocalDate().atTime(java.time.LocalTime.now());
             }
-            if (colDateTime.toLocalDate().isBefore(activeColDate) ||
-                    (targetEmployee != null && dayBookRepository.findByEmployeeIdAndDate(targetEmployee.getId(), colDateTime.toLocalDate())
-                            .map(d -> d.getStatus() == com.dapfintech.employee.enums.DayBookStatus.CLOSED).orElse(false))) {
-                colDateTime = activeColDate.atTime(colDateTime.toLocalTime());
-            }
         } else {
+            java.time.LocalDate activeColDate = dayBookService.getActiveDayBookDate(
+                    targetEmployee != null ? targetEmployee.getId() : (loggedInEmployee != null ? loggedInEmployee.getId() : null)
+            );
             colDateTime = activeColDate.atTime(java.time.LocalTime.now());
+        }
+
+        java.time.LocalDate colDate = colDateTime.toLocalDate();
+        UUID targetMarketId = null;
+        if (customer != null && customer.getMarket() != null) {
+            targetMarketId = customer.getMarket().getId();
+        } else if (targetEmployee != null) {
+            List<com.dapfintech.market.entity.EmployeeMarketAssignment> empAsgs = assignmentRepository.findByEmployeeId(targetEmployee.getId());
+            if (empAsgs != null && !empAsgs.isEmpty() && empAsgs.get(0).getMarket() != null) {
+                targetMarketId = empAsgs.get(0).getMarket().getId();
+            }
+        }
+
+        // Sequential DayBook rule: If previous DayBook is not closed, no values can go into this DayBook
+        if (targetMarketId != null) {
+            com.dapfintech.employee.dto.MarketDayBookResponse mdbResp = dayBookService.getOrCreateMarketDayBook(targetMarketId, colDate);
+            if (!mdbResp.isPreviousDayClosed() && mdbResp.getUnclosedDate() != null) {
+                throw new RuntimeException("Cannot collect EMI for " + colDate + " because previous Market DayBook for " +
+                        mdbResp.getUnclosedDate() + " is not closed yet. Please close the DayBook for " + mdbResp.getUnclosedDate() + " first.");
+            }
         }
 
         LoanCollection collection =
@@ -1115,7 +1131,7 @@ public class LoanCollectionServiceImpl
             );
         }
 
-        // Update DayBook for target employee on collection date
+        // Update DayBook for target employee and market on collection date
         if (targetEmployee != null) {
             try {
                 com.dapfintech.employee.dto.DayBookTransactionRequest dbReq = new com.dapfintech.employee.dto.DayBookTransactionRequest();
@@ -1123,11 +1139,16 @@ public class LoanCollectionServiceImpl
                 dbReq.setAmount(collection.getCollectedAmount());
                 String custName = customer != null ? customer.getFullName() : "";
                 dbReq.setRemarks("EMI Collected: " + custName + " (" + loan.getLoanCode() + ")");
-                java.time.LocalDate colDate = colDateTime.toLocalDate();
                 dayBookService.addTransactionForDate(targetEmployee.getId(), colDate, dbReq);
             } catch(Exception e) {
-                // If it fails (e.g. daybook closed), we don't block the collection, just log it.
-                e.printStackTrace();
+                log.error("Failed to add collection transaction to DayBook: {}", e.getMessage(), e);
+            }
+        }
+        if (targetMarketId != null) {
+            try {
+                dayBookService.syncMarketDayBook(targetMarketId, colDate);
+            } catch(Exception e) {
+                log.error("Failed to sync Market DayBook for collection date: {}", e.getMessage(), e);
             }
         }
 

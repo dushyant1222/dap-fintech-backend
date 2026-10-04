@@ -59,6 +59,9 @@ public class DayBookSelfHealingService {
     @Autowired
     private com.dapfintech.market.repository.EmployeeMarketAssignmentRepository assignmentRepository;
 
+    @Autowired
+    private com.dapfintech.loan.repository.LoanCollectionRepository loanCollectionRepository;
+
     private static final Pattern LOAN_CODE_PATTERN = Pattern.compile("(?i)\\b(DAP-LN-[A-Z0-9-]+|[A-Z]{2,4}-[A-Z0-9]+-[A-Z0-9]+-\\d+)\\b");
 
     @EventListener(ApplicationReadyEvent.class)
@@ -70,6 +73,7 @@ public class DayBookSelfHealingService {
             linkOrphanTransactionsToDayBooks();
             int duplicateTransfersRemoved = cleanDuplicateOfficeRemittanceTransfers();
             int orphanLoanTxsRemoved = cleanOrphanLoanTransactions();
+            fixMisdatedCollections();
             recalculateAllDayBookBalances();
             resyncMarketDayBooks();
             syncMarketDayBookClosures();
@@ -260,6 +264,35 @@ public class DayBookSelfHealingService {
                     });
                 }
             }
+        }
+    }
+
+    private void fixMisdatedCollections() {
+        try {
+            List<com.dapfintech.loan.entity.LoanCollection> allCols = loanCollectionRepository.findAll();
+            java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.ENGLISH);
+            Pattern pattern = Pattern.compile("(?i)for\\s+(\\d{1,2}\\s+[A-Za-z]{3}\\s+\\d{4})");
+
+            for (com.dapfintech.loan.entity.LoanCollection col : allCols) {
+                if (col.getRemarks() != null) {
+                    Matcher m = pattern.matcher(col.getRemarks());
+                    if (m.find()) {
+                        try {
+                            LocalDate intendedDate = LocalDate.parse(m.group(1).trim(), dtf);
+                            if (col.getCollectionDate() != null && !col.getCollectionDate().toLocalDate().isEqual(intendedDate)) {
+                                log.info("[DayBookSelfHealing] Healing collection {} date from {} to {}",
+                                        col.getId(), col.getCollectionDate(), intendedDate);
+                                col.setCollectionDate(intendedDate.atTime(col.getCollectionDate().toLocalTime()));
+                                loanCollectionRepository.save(col);
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to parse collection date from remarks: {}", col.getRemarks());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("[DayBookSelfHealing] Error fixing misdated collections: {}", e.getMessage(), e);
         }
     }
 }
