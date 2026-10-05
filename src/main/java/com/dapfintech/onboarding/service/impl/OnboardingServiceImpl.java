@@ -50,6 +50,9 @@ import com.dapfintech.market.repository.MarketRepository;
 import com.dapfintech.onboarding.dto.request.OnboardSingleLoanRequest;
 import com.dapfintech.onboarding.dto.response.OnboardingSummaryResponse;
 import com.dapfintech.employee.dto.DayBookTransactionRequest;
+import com.dapfintech.employee.entity.MarketDayBook;
+import com.dapfintech.employee.enums.DayBookStatus;
+import com.dapfintech.employee.repository.MarketDayBookRepository;
 import com.dapfintech.employee.service.DayBookService;
 import com.dapfintech.onboarding.service.OnboardingService;
 
@@ -72,6 +75,7 @@ public class OnboardingServiceImpl implements OnboardingService {
     private final LoanMapper loanMapper;
     private final PlatformTransactionManager transactionManager;
     private final DayBookService dayBookService;
+    private final MarketDayBookRepository marketDayBookRepository;
 
     @Override
     public ByteArrayInputStream generateOnboardingTemplate() {
@@ -525,18 +529,18 @@ public class OnboardingServiceImpl implements OnboardingService {
                     .build();
             collectionRepository.save(consolidatedCol);
 
-            // Also update the employee's DayBook for 29 Sep so the ledger reflects the historical collection
+            // Also update the employee's DayBook for effectiveCutoff so the ledger reflects the historical collection
             if (collector != null && totalCollected.compareTo(BigDecimal.ZERO) > 0) {
                 try {
                     DayBookTransactionRequest dbReq = new DayBookTransactionRequest();
                     dbReq.setType("COLLECTIONS");
                     dbReq.setAmount(totalCollected);
                     dbReq.setRemarks("HIST: " + savedLoan.getLoanCode() + " - "
-                            + savedLoan.getCustomer().getFirstName() + " " + savedLoan.getCustomer().getLastName()
-                            + " (up to 29 Sep 2026)");
+                            + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
+                            + " (up to " + effectiveCutoff + ")");
                     dayBookService.addTransactionForDate(
                             collector.getId(),
-                            effectiveCutoff,   // LocalDate: 2026-09-29
+                            effectiveCutoff,
                             dbReq
                     );
                 } catch (Exception e) {
@@ -568,19 +572,31 @@ public class OnboardingServiceImpl implements OnboardingService {
             }
         }
 
-        // Also record loan disbursement in DayBook on effectiveCutoff (29 Sep 2026) for ALL loans
+        // Also record loan disbursement in DayBook on effectiveCutoff for ALL loans
         if (collector != null && disbursed.compareTo(BigDecimal.ZERO) > 0) {
             try {
-                DayBookTransactionRequest disReq = new DayBookTransactionRequest();
-                disReq.setType("LOANS_DISBURSED");
-                disReq.setAmount(disbursed);
-                disReq.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
-                        + " (" + savedLoan.getLoanCode() + ")");
-                dayBookService.addTransactionForDate(
-                        collector.getId(),
-                        effectiveCutoff,
-                        disReq
-                );
+                boolean isDayBookClosed = false;
+                if (market != null) {
+                    MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(market.getId(), effectiveCutoff).orElse(null);
+                    if (mdb != null && mdb.getStatus() == DayBookStatus.CLOSED) {
+                        isDayBookClosed = true;
+                    }
+                }
+                if (!isDayBookClosed) {
+                    DayBookTransactionRequest disReq = new DayBookTransactionRequest();
+                    disReq.setType("LOANS_DISBURSED");
+                    disReq.setAmount(disbursed);
+                    disReq.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
+                            + " (" + savedLoan.getLoanCode() + ")");
+                    dayBookService.addTransactionForDate(
+                            collector.getId(),
+                            effectiveCutoff,
+                            disReq
+                    );
+                } else {
+                    log.info("Market daybook for market {} on {} is CLOSED. Skipping DayBook disbursement recording for loan {}.",
+                            market != null ? market.getMarketName() : "N/A", effectiveCutoff, savedLoan.getLoanCode());
+                }
             } catch (Exception e) {
                 log.warn("Could not record loan disbursement in daybook for collector {}: {}", collector.getId(), e.getMessage());
             }

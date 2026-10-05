@@ -30,6 +30,7 @@ import com.dapfintech.notification.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -268,14 +269,14 @@ public class DayBookServiceImpl implements DayBookService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DayBookResponse addTransaction(UUID employeeId, DayBookTransactionRequest request) {
         LocalDate activeDate = getActiveDayBookDate(employeeId);
         return addTransactionForDate(employeeId, activeDate, request);
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DayBookResponse addTransactionForDate(UUID employeeId, LocalDate date, DayBookTransactionRequest request) {
         List<EmployeeMarketAssignment> empAsgs = getAssignmentsForEmployee(employeeId);
         Market empMarket = !empAsgs.isEmpty() ? empAsgs.get(0).getMarket() : null;
@@ -672,7 +673,7 @@ public class DayBookServiceImpl implements DayBookService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncMarketDayBook(UUID marketId, LocalDate date) {
         MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(marketId, date)
                 .orElseGet(() -> {
@@ -1113,7 +1114,7 @@ public class DayBookServiceImpl implements DayBookService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void cleanDayBookForDeletedLoan(String loanCode, UUID loanId) {
         if (loanCode == null || loanCode.trim().isEmpty()) {
             return;
