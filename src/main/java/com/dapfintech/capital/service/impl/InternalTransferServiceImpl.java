@@ -152,11 +152,11 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         UUID currentUserId = securityUtils.getCurrentUserId();
         User currentUser = securityUtils.getCurrentUser();
 
-        InternalTransfer transfer = internalTransferRepository.findById(transferId)
+        InternalTransfer transfer = internalTransferRepository.findByIdForUpdate(transferId)
                 .orElseThrow(() -> new RuntimeException("Transfer not found"));
 
         if (transfer.getStatus() != TransferStatus.PENDING) {
-            throw new RuntimeException("Transfer is not in PENDING status");
+            throw new RuntimeException("Transfer cannot be accepted: it is already " + transfer.getStatus());
         }
 
         // Authorization check: Receiver user OR employee in receiving market OR admin for office remittance
@@ -397,7 +397,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
     public InternalTransferResponse rejectTransfer(UUID transferId) {
         UUID currentUserId = securityUtils.getCurrentUserId();
 
-        InternalTransfer transfer = internalTransferRepository.findById(transferId)
+        InternalTransfer transfer = internalTransferRepository.findByIdForUpdate(transferId)
                 .orElseThrow(() -> new RuntimeException("Transfer not found"));
 
         User currentUser = securityUtils.getCurrentUser();
@@ -411,7 +411,7 @@ public class InternalTransferServiceImpl implements InternalTransferService {
         }
 
         if (transfer.getStatus() != TransferStatus.PENDING) {
-            throw new RuntimeException("Transfer is not in PENDING status");
+            throw new RuntimeException("Transfer cannot be rejected: it is already " + transfer.getStatus());
         }
 
         transfer.setStatus(TransferStatus.REJECTED);

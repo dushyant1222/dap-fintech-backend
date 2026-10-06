@@ -4,12 +4,20 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import com.dapfintech.capital.entity.InternalTransfer;
 import com.dapfintech.capital.enums.TransferStatus;
 
 public interface InternalTransferRepository extends JpaRepository<InternalTransfer, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM InternalTransfer t WHERE t.id = :id")
+    Optional<InternalTransfer> findByIdForUpdate(@Param("id") UUID id);
+
     List<InternalTransfer> findByReceiverIdAndStatusOrderByTransferDateDesc(UUID receiverId, TransferStatus status);
     List<InternalTransfer> findByReceiverMarketIdAndStatusOrderByTransferDateDesc(UUID marketId, TransferStatus status);
     List<InternalTransfer> findByReceiverMarketIdInAndStatusOrderByTransferDateDesc(List<UUID> marketIds, TransferStatus status);

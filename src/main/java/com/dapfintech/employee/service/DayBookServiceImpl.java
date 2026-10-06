@@ -231,7 +231,11 @@ public class DayBookServiceImpl implements DayBookService {
                         DayBook ndb = new DayBook();
                         ndb.setEmployeeId(employeeId);
                         ndb.setDate(date);
-                        return dayBookRepository.save(ndb);
+                        try {
+                            return dayBookRepository.save(ndb);
+                        } catch (Exception ex) {
+                            return dayBookRepository.findByEmployeeIdAndDate(employeeId, date).orElse(ndb);
+                        }
                     });
 
             dayBook.setOpeningBalance(mdb.getOpeningBalance());
@@ -263,7 +267,11 @@ public class DayBookServiceImpl implements DayBookService {
                     ndb.setEmployeeId(employeeId);
                     ndb.setDate(date);
                     ndb.setStatus(DayBookStatus.OPEN);
-                    return dayBookRepository.save(ndb);
+                    try {
+                        return dayBookRepository.save(ndb);
+                    } catch (Exception ex) {
+                        return dayBookRepository.findByEmployeeIdAndDate(employeeId, date).orElse(ndb);
+                    }
                 });
         return mapToResponse(dayBook);
     }
@@ -629,7 +637,11 @@ public class DayBookServiceImpl implements DayBookService {
                     newMdb.setMarketId(marketId);
                     newMdb.setDate(date);
                     newMdb.setStatus(DayBookStatus.OPEN);
-                    return marketDayBookRepository.save(newMdb);
+                    try {
+                        return marketDayBookRepository.save(newMdb);
+                    } catch (Exception ex) {
+                        return marketDayBookRepository.findByMarketIdAndDate(marketId, date).orElse(newMdb);
+                    }
                 });
 
         // Determine if previous market day was closed
@@ -681,7 +693,11 @@ public class DayBookServiceImpl implements DayBookService {
                     newMdb.setMarketId(marketId);
                     newMdb.setDate(date);
                     newMdb.setStatus(DayBookStatus.OPEN);
-                    return marketDayBookRepository.save(newMdb);
+                    try {
+                        return marketDayBookRepository.save(newMdb);
+                    } catch (Exception ex) {
+                        return marketDayBookRepository.findByMarketIdAndDate(marketId, date).orElse(newMdb);
+                    }
                 });
 
         LocalDateTime start = date.atStartOfDay();
