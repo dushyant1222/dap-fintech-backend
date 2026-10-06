@@ -255,8 +255,14 @@ public interface LoanRepository
     long countByLoanCodeStartingWith(String prefix);
 
     @Query("""
-            SELECT l FROM Loan l
-            WHERE (l.createdBy.id = :employeeId OR l.customer.market.id IN :marketIds)
+            SELECT DISTINCT l FROM Loan l
+            LEFT JOIN l.customer c
+            LEFT JOIN c.market m
+            LEFT JOIN l.createdBy u
+            WHERE (
+                (m.id IS NOT NULL AND m.id IN :marketIds)
+                OR (u.id IS NOT NULL AND u.id = :employeeId)
+            )
             AND l.disbursementDate >= :start AND l.disbursementDate < :end
             ORDER BY l.disbursementDate ASC
             """)
@@ -268,8 +274,14 @@ public interface LoanRepository
     );
 
     @Query("""
-            SELECT l FROM Loan l
-            WHERE (l.createdBy.id = :employeeId OR l.customer.market.id IN :marketIds)
+            SELECT DISTINCT l FROM Loan l
+            LEFT JOIN l.customer c
+            LEFT JOIN c.market m
+            LEFT JOIN l.createdBy u
+            WHERE (
+                (m.id IS NOT NULL AND m.id IN :marketIds)
+                OR (u.id IS NOT NULL AND u.id = :employeeId)
+            )
             AND l.disbursementDate <= :end
             ORDER BY l.disbursementDate ASC
             """)

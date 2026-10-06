@@ -50,8 +50,10 @@ import com.dapfintech.market.repository.MarketRepository;
 import com.dapfintech.onboarding.dto.request.OnboardSingleLoanRequest;
 import com.dapfintech.onboarding.dto.response.OnboardingSummaryResponse;
 import com.dapfintech.employee.dto.DayBookTransactionRequest;
+import com.dapfintech.employee.entity.DayBookTransaction;
 import com.dapfintech.employee.entity.MarketDayBook;
 import com.dapfintech.employee.enums.DayBookStatus;
+import com.dapfintech.employee.repository.DayBookTransactionRepository;
 import com.dapfintech.employee.repository.MarketDayBookRepository;
 import com.dapfintech.employee.service.DayBookService;
 import com.dapfintech.onboarding.service.OnboardingService;
@@ -76,6 +78,7 @@ public class OnboardingServiceImpl implements OnboardingService {
     private final PlatformTransactionManager transactionManager;
     private final DayBookService dayBookService;
     private final MarketDayBookRepository marketDayBookRepository;
+    private final DayBookTransactionRepository dayBookTransactionRepository;
 
     @Override
     public ByteArrayInputStream generateOnboardingTemplate() {
@@ -273,7 +276,9 @@ public class OnboardingServiceImpl implements OnboardingService {
     @Override
     @Transactional
     public LoanResponse onboardSingleLoan(OnboardSingleLoanRequest request) {
-        LocalDate effectiveDate = request.getAsOfDate() != null ? request.getAsOfDate() : LocalDate.of(2026, 9, 29);
+        LocalDate effectiveDate = request.getAsOfDate() != null
+                ? request.getAsOfDate()
+                : (request.getDisbursementDate() != null ? request.getDisbursementDate() : LocalDate.of(2026, 9, 29));
         Loan loan = processSingleOnboarding(request, null, effectiveDate);
         return loanMapper.toResponse(loan);
     }
@@ -317,12 +322,31 @@ public class OnboardingServiceImpl implements OnboardingService {
             }
         }
 
-        // Fallback: if no collector specified, use the market's active assigned employee
+        // Fallback 1: Authenticated user from security context if available
+        if (collector == null) {
+            try {
+                var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && auth.getName() != null) {
+                    collector = userRepository.findByMobileNumber(auth.getName()).orElse(null);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Fallback 2: if no collector specified, use the market's active assigned employee
         if (collector == null && market != null) {
             List<EmployeeMarketAssignment> assignments = assignmentRepository.findByMarketIdAndIsActiveTrue(market.getId());
             if (!assignments.isEmpty()) {
                 collector = assignments.get(0).getEmployee();
-                log.info("No collectorMobile in Excel row — using market employee {} for daybook", collector.getId());
+                log.info("No collectorMobile in request — using market employee {} for daybook", collector.getId());
+            }
+        }
+
+        // Fallback 3: If market is still null, but collector is assigned to a market, resolve market from collector!
+        if (market == null && collector != null) {
+            List<EmployeeMarketAssignment> empAsgs = assignmentRepository.findByEmployeeIdAndIsActiveTrue(collector.getId());
+            if (!empAsgs.isEmpty()) {
+                market = empAsgs.get(0).getMarket();
+                log.info("Resolved market {} from collector {}", market.getMarketName(), collector.getFullName());
             }
         }
 
@@ -346,6 +370,7 @@ public class OnboardingServiceImpl implements OnboardingService {
                         .mobileNumber(mobile)
                         .market(market)
                         .status(CustomerStatus.ACTIVE)
+                        .createdBy(collector)
                         .build();
                 customer.setCustomerCode(generateCustomerCode(market));
                 customer = customerRepository.save(customer);
@@ -355,6 +380,10 @@ public class OnboardingServiceImpl implements OnboardingService {
             market = customer.getMarket();
         } else if (market != null && customer.getMarket() == null) {
             customer.setMarket(market);
+            customerRepository.save(customer);
+        }
+        if (collector != null && customer.getCreatedBy() == null) {
+            customer.setCreatedBy(collector);
             customerRepository.save(customer);
         }
         if (collector == null && market != null) {
@@ -572,33 +601,40 @@ public class OnboardingServiceImpl implements OnboardingService {
             }
         }
 
-        // Also record loan disbursement in DayBook on effectiveCutoff for ALL loans
-        if (collector != null && disbursed.compareTo(BigDecimal.ZERO) > 0) {
+        // Also record loan disbursement in DayBook for ALL loans
+        if (disbursed.compareTo(BigDecimal.ZERO) > 0) {
+            LocalDate targetDisDate = (disDate != null && disDate.isAfter(effectiveCutoff)) ? disDate : effectiveCutoff;
             try {
-                boolean isDayBookClosed = false;
-                if (market != null) {
-                    MarketDayBook mdb = marketDayBookRepository.findByMarketIdAndDate(market.getId(), effectiveCutoff).orElse(null);
-                    if (mdb != null && mdb.getStatus() == DayBookStatus.CLOSED) {
-                        isDayBookClosed = true;
+                UUID mId = market != null ? market.getId() : (customer.getMarket() != null ? customer.getMarket().getId() : null);
+                UUID empId = collector != null ? collector.getId() : null;
+                if (empId == null && mId != null) {
+                    List<EmployeeMarketAssignment> asgs = assignmentRepository.findByMarketIdAndIsActiveTrue(mId);
+                    if (!asgs.isEmpty()) {
+                        empId = asgs.get(0).getEmployee().getId();
                     }
                 }
-                if (!isDayBookClosed) {
-                    DayBookTransactionRequest disReq = new DayBookTransactionRequest();
-                    disReq.setType("LOANS_DISBURSED");
-                    disReq.setAmount(disbursed);
-                    disReq.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " " + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
+
+                if (empId != null) {
+                    DayBookTransaction disTx = new DayBookTransaction();
+                    disTx.setMarketId(mId);
+                    disTx.setEmployeeId(empId);
+                    disTx.setType("LOANS_DISBURSED");
+                    disTx.setAmount(disbursed);
+                    disTx.setRemarks("New Loan: " + savedLoan.getCustomer().getFirstName() + " "
+                            + (savedLoan.getCustomer().getLastName() != null ? savedLoan.getCustomer().getLastName() : "")
                             + " (" + savedLoan.getLoanCode() + ")");
-                    dayBookService.addTransactionForDate(
-                            collector.getId(),
-                            effectiveCutoff,
-                            disReq
-                    );
-                } else {
-                    log.info("Market daybook for market {} on {} is CLOSED. Skipping DayBook disbursement recording for loan {}.",
-                            market != null ? market.getMarketName() : "N/A", effectiveCutoff, savedLoan.getLoanCode());
+                    disTx.setCreatedAt(savedLoan.getDisbursementDate() != null ? savedLoan.getDisbursementDate() : targetDisDate.atTime(10, 0));
+                    dayBookTransactionRepository.save(disTx);
+                }
+
+                if (mId != null) {
+                    dayBookService.syncMarketDayBook(mId, targetDisDate);
+                }
+                if (empId != null) {
+                    dayBookService.getOrCreateDayBook(empId, targetDisDate);
                 }
             } catch (Exception e) {
-                log.warn("Could not record loan disbursement in daybook for collector {}: {}", collector.getId(), e.getMessage());
+                log.warn("Could not record loan disbursement in daybook: {}", e.getMessage());
             }
         }
 

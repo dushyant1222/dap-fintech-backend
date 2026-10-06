@@ -716,22 +716,51 @@ public class DayBookServiceImpl implements DayBookService {
         mdb.setTotalCollections(totalColl);
 
         // 2. Total Loans Disbursed in this market
+        List<EmployeeMarketAssignment> mAssigns = getAssignmentsForMarket(marketId);
+        List<UUID> marketEmpIds = mAssigns.stream()
+                .filter(a -> a.getEmployee() != null)
+                .map(a -> a.getEmployee().getId())
+                .collect(Collectors.toList());
+
         List<Loan> disbursedLoans;
         if (date.isEqual(LocalDate.of(2026, 9, 29))) {
             LocalDateTime cutoffEnd = date.atTime(23, 59, 59);
-            disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsUpTo(
+            disbursedLoans = new ArrayList<>(loanRepository.findDisbursedLoansForEmployeeOrMarketsUpTo(
                     UUID.randomUUID(), Collections.singletonList(marketId), cutoffEnd
-            );
+            ));
         } else {
-            disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
+            disbursedLoans = new ArrayList<>(loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
                     UUID.randomUUID(), Collections.singletonList(marketId), start, end
-            );
+            ));
+            for (UUID empId : marketEmpIds) {
+                List<Loan> empLoans = loanRepository.findDisbursedLoansByEmployeeBetween(empId, start, end);
+                for (Loan el : empLoans) {
+                    if (!disbursedLoans.contains(el)) {
+                        disbursedLoans.add(el);
+                    }
+                }
+            }
         }
         BigDecimal totalDisbursed = BigDecimal.ZERO;
         if (disbursedLoans != null && !disbursedLoans.isEmpty()) {
             totalDisbursed = disbursedLoans.stream()
                     .map(l -> l.getDisbursedAmount() != null ? l.getDisbursedAmount() : (l.getApprovedAmount() != null ? l.getApprovedAmount() : BigDecimal.ZERO))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        // Also include any standalone DayBookTransaction of type LOANS_DISBURSED not already tied to a loan
+        List<DayBookTransaction> existingDisbTx = dayBookTransactionRepository.findByMarketIdAndCreatedAtBetween(marketId, start, end);
+        if (existingDisbTx != null) {
+            for (DayBookTransaction tx : existingDisbTx) {
+                if ("LOANS_DISBURSED".equalsIgnoreCase(tx.getType()) && tx.getAmount() != null) {
+                    boolean isFromDisbursedLoan = disbursedLoans != null && disbursedLoans.stream().anyMatch(l ->
+                            l.getLoanCode() != null && tx.getRemarks() != null && tx.getRemarks().contains(l.getLoanCode())
+                    );
+                    if (!isFromDisbursedLoan) {
+                        totalDisbursed = totalDisbursed.add(tx.getAmount());
+                    }
+                }
+            }
         }
         mdb.setTotalLoansDisbursed(totalDisbursed);
 
@@ -1007,37 +1036,64 @@ public class DayBookServiceImpl implements DayBookService {
             }
         }
 
-        // 4. Ensure LOANS_DISBURSED transactions are represented
-        boolean hasLoansDisbursed = list.stream().anyMatch(t -> "LOANS_DISBURSED".equalsIgnoreCase(t.getType()));
-        if (!hasLoansDisbursed) {
-            List<Loan> disbursedLoans;
-            if (date.isEqual(LocalDate.of(2026, 9, 29))) {
-                LocalDateTime cutoffEnd = date.atTime(23, 59, 59);
-                disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsUpTo(
-                        UUID.randomUUID(), Collections.singletonList(marketId), cutoffEnd
-                );
-            } else {
-                disbursedLoans = loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
-                        UUID.randomUUID(), Collections.singletonList(marketId), start, end
-                );
-            }
-            if (disbursedLoans != null && !disbursedLoans.isEmpty()) {
-                for (Loan l : disbursedLoans) {
-                    BigDecimal disAmount = l.getDisbursedAmount() != null ? l.getDisbursedAmount() : (l.getApprovedAmount() != null ? l.getApprovedAmount() : BigDecimal.ZERO);
-                    if (disAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
+        // 4. Ensure ALL LOANS_DISBURSED transactions are represented (by loan code)
+        List<EmployeeMarketAssignment> assigns4 = getAssignmentsForMarket(marketId);
+        List<UUID> marketEmpIds4 = assigns4.stream()
+                .filter(a -> a.getEmployee() != null)
+                .map(a -> a.getEmployee().getId())
+                .collect(Collectors.toList());
 
+        List<Loan> disbursedLoans;
+        if (date.isEqual(LocalDate.of(2026, 9, 29))) {
+            LocalDateTime cutoffEnd = date.atTime(23, 59, 59);
+            disbursedLoans = new ArrayList<>(loanRepository.findDisbursedLoansForEmployeeOrMarketsUpTo(
+                    UUID.randomUUID(), Collections.singletonList(marketId), cutoffEnd
+            ));
+        } else {
+            disbursedLoans = new ArrayList<>(loanRepository.findDisbursedLoansForEmployeeOrMarketsBetween(
+                    UUID.randomUUID(), Collections.singletonList(marketId), start, end
+            ));
+            for (UUID empId : marketEmpIds4) {
+                List<Loan> empLoans = loanRepository.findDisbursedLoansByEmployeeBetween(empId, start, end);
+                for (Loan el : empLoans) {
+                    if (!disbursedLoans.contains(el)) {
+                        disbursedLoans.add(el);
+                    }
+                }
+            }
+        }
+
+        if (disbursedLoans != null && !disbursedLoans.isEmpty()) {
+            for (Loan l : disbursedLoans) {
+                BigDecimal disAmount = l.getDisbursedAmount() != null ? l.getDisbursedAmount() : (l.getApprovedAmount() != null ? l.getApprovedAmount() : BigDecimal.ZERO);
+                if (disAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                String loanCode = l.getLoanCode() != null ? l.getLoanCode() : "";
+                boolean alreadyInList = list.stream().anyMatch(t ->
+                        "LOANS_DISBURSED".equalsIgnoreCase(t.getType())
+                                && t.getRemarks() != null
+                                && !loanCode.isEmpty()
+                                && t.getRemarks().contains(loanCode)
+                );
+
+                if (!alreadyInList) {
+                    UUID empIdToUse = l.getCreatedBy() != null ? l.getCreatedBy().getId() : (!marketEmpIds4.isEmpty() ? marketEmpIds4.get(0) : null);
                     DayBookTransaction tx = new DayBookTransaction();
                     tx.setMarketId(marketId);
-                    tx.setEmployeeId(l.getCreatedBy() != null ? l.getCreatedBy().getId() : null);
+                    tx.setEmployeeId(empIdToUse);
                     tx.setType("LOANS_DISBURSED");
                     tx.setAmount(disAmount);
                     String custName = l.getCustomer() != null
                             ? (l.getCustomer().getFirstName() + " " + (l.getCustomer().getLastName() != null ? l.getCustomer().getLastName() : ""))
                             : "";
-                    String loanCode = l.getLoanCode() != null ? l.getLoanCode() : "";
                     tx.setRemarks("New Loan: " + custName + " (" + loanCode + ")");
                     tx.setCreatedAt(l.getDisbursementDate() != null ? l.getDisbursementDate() : date.atTime(10, 0));
                     list.add(tx);
+                    try {
+                        if (tx.getEmployeeId() != null) {
+                            dayBookTransactionRepository.save(tx);
+                        }
+                    } catch (Exception ignored) {}
                 }
             }
         }

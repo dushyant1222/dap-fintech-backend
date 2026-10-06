@@ -28,6 +28,8 @@ public class DataMigrationRunner implements CommandLineRunner {
     private final com.dapfintech.loan.repository.LoanCollectionRepository collectionRepository;
     private final com.dapfintech.employee.service.DayBookService dayBookService;
     private final com.dapfintech.market.repository.EmployeeMarketAssignmentRepository assignmentRepository;
+    private final com.dapfintech.market.repository.MarketRepository marketRepository;
+    private final com.dapfintech.employee.repository.DayBookTransactionRepository dayBookTransactionRepository;
 
     @Override
     @Transactional
@@ -217,6 +219,119 @@ public class DataMigrationRunner implements CommandLineRunner {
             }
         } catch (Exception e) {
             log.warn("Could not auto-consolidate historical collections or sync daybooks: {}", e.getMessage());
+        }
+
+        // Auto-heal onboarded loans, customer markets, and daybooks (especially loans disbursed from 2026-09-30 onwards)
+        try {
+            log.info("Starting auto-healing of onboarded loans, customer markets, and daybooks...");
+            List<Loan> allLoans = loanRepository.findAll();
+            List<com.dapfintech.market.entity.Market> activeMarkets = marketRepository.findAll();
+
+            for (Loan l : allLoans) {
+                if (l.getDisbursementDate() == null) continue;
+
+                Customer c = l.getCustomer();
+                if (c == null) continue;
+
+                // 1. If customer has no market, resolve it
+                if (c.getMarket() == null) {
+                    com.dapfintech.market.entity.Market resolvedMarket = null;
+                    if (l.getCreatedBy() != null) {
+                        var asgs = assignmentRepository.findByEmployeeIdAndIsActiveTrue(l.getCreatedBy().getId());
+                        if (!asgs.isEmpty()) resolvedMarket = asgs.get(0).getMarket();
+                    }
+                    if (resolvedMarket == null && c.getCreatedBy() != null) {
+                        var asgs = assignmentRepository.findByEmployeeIdAndIsActiveTrue(c.getCreatedBy().getId());
+                        if (!asgs.isEmpty()) resolvedMarket = asgs.get(0).getMarket();
+                    }
+                    if (resolvedMarket == null && !activeMarkets.isEmpty()) {
+                        String code = l.getLoanCode() != null ? l.getLoanCode().toUpperCase() : "";
+                        for (var m : activeMarkets) {
+                            String mPrefix = m.getMarketName().length() >= 2 ? m.getMarketName().substring(0, 2).toUpperCase() : m.getMarketName().toUpperCase();
+                            if (code.contains("-" + mPrefix + "-") || code.contains("-" + mPrefix)) {
+                                resolvedMarket = m;
+                                break;
+                            }
+                        }
+                        if (resolvedMarket == null) {
+                            resolvedMarket = activeMarkets.get(0);
+                        }
+                    }
+                    if (resolvedMarket != null) {
+                        c.setMarket(resolvedMarket);
+                        customerRepository.save(c);
+                        log.info("Auto-healed customer {} market to {}", c.getId(), resolvedMarket.getMarketName());
+                    }
+                }
+
+                // 2. If loan has no createdBy, resolve it
+                if (l.getCreatedBy() == null) {
+                    User resolvedUser = null;
+                    if (c.getCreatedBy() != null) {
+                        resolvedUser = c.getCreatedBy();
+                    } else if (c.getMarket() != null) {
+                        var asgs = assignmentRepository.findByMarketIdAndIsActiveTrue(c.getMarket().getId());
+                        if (!asgs.isEmpty()) resolvedUser = asgs.get(0).getEmployee();
+                    }
+                    if (resolvedUser == null) {
+                        List<User> emps = userRepository.findByRoleRoleName("EMPLOYEE");
+                        if (!emps.isEmpty()) resolvedUser = emps.get(0);
+                    }
+                    if (resolvedUser != null) {
+                        l.setCreatedBy(resolvedUser);
+                        loanRepository.save(l);
+                        log.info("Auto-healed loan {} createdBy to {}", l.getLoanCode(), resolvedUser.getFullName());
+                    }
+                }
+
+                // 3. For any loan disbursed after 2026-09-29, ensure a DayBookTransaction exists on its disbursement date
+                java.time.LocalDate disDate = l.getDisbursementDate().toLocalDate();
+                if (c.getMarket() != null && !disDate.isBefore(java.time.LocalDate.of(2026, 9, 30))) {
+                    java.util.UUID mId = c.getMarket().getId();
+                    java.time.LocalDateTime start = disDate.atStartOfDay();
+                    java.time.LocalDateTime end = disDate.plusDays(1).atStartOfDay();
+
+                    List<com.dapfintech.employee.entity.DayBookTransaction> existingTx =
+                            dayBookTransactionRepository.findByMarketIdAndCreatedAtBetween(mId, start, end);
+
+                    boolean hasTxForThisLoan = existingTx.stream().anyMatch(t ->
+                            "LOANS_DISBURSED".equalsIgnoreCase(t.getType())
+                                    && t.getRemarks() != null
+                                    && l.getLoanCode() != null
+                                    && t.getRemarks().contains(l.getLoanCode())
+                    );
+
+                    if (!hasTxForThisLoan) {
+                        java.math.BigDecimal disAmt = l.getDisbursedAmount() != null ? l.getDisbursedAmount() : (l.getApprovedAmount() != null ? l.getApprovedAmount() : java.math.BigDecimal.ZERO);
+                        if (disAmt.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                            com.dapfintech.employee.entity.DayBookTransaction tx = new com.dapfintech.employee.entity.DayBookTransaction();
+                            tx.setMarketId(mId);
+                            tx.setEmployeeId(l.getCreatedBy() != null ? l.getCreatedBy().getId() : (c.getCreatedBy() != null ? c.getCreatedBy().getId() : null));
+                            if (tx.getEmployeeId() == null) {
+                                var asgs = assignmentRepository.findByMarketIdAndIsActiveTrue(mId);
+                                if (!asgs.isEmpty()) tx.setEmployeeId(asgs.get(0).getEmployee().getId());
+                            }
+                            if (tx.getEmployeeId() != null) {
+                                tx.setType("LOANS_DISBURSED");
+                                tx.setAmount(disAmt);
+                                String custName = c.getFirstName() + (c.getLastName() != null ? " " + c.getLastName() : "");
+                                tx.setRemarks("New Loan: " + custName + " (" + l.getLoanCode() + ")");
+                                tx.setCreatedAt(l.getDisbursementDate());
+                                dayBookTransactionRepository.save(tx);
+                                log.info("Auto-created missing DayBookTransaction for loan {} on {} (amount {})", l.getLoanCode(), disDate, disAmt);
+                            }
+                        }
+                    }
+
+                    // Always trigger sync for this market and date
+                    dayBookService.syncMarketDayBook(mId, disDate);
+                    if (l.getCreatedBy() != null) {
+                        dayBookService.getOrCreateDayBook(l.getCreatedBy().getId(), disDate);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Auto-healing of onboarded loans encountered error: {}", e.getMessage(), e);
         }
 
         log.info("Data Migration for Sequential IDs, Historical Collections, and DayBook Sync completed successfully.");

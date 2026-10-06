@@ -700,8 +700,15 @@ public interface LoanCollectionRepository extends JpaRepository<LoanCollection, 
     BigDecimal getSumCollectedByLoan(@Param("loanId") UUID loanId);
 
     @Query("""
-            SELECT c FROM LoanCollection c
-            WHERE (c.collectedBy.id = :employeeId OR c.loan.customer.market.id IN :marketIds)
+            SELECT DISTINCT c FROM LoanCollection c
+            LEFT JOIN c.loan l
+            LEFT JOIN l.customer cust
+            LEFT JOIN cust.market m
+            LEFT JOIN c.collectedBy cb
+            WHERE (
+                (m.id IS NOT NULL AND m.id IN :marketIds)
+                OR (cb.id IS NOT NULL AND cb.id = :employeeId)
+            )
             AND c.collectionDate >= :start AND c.collectionDate < :end
             ORDER BY c.collectionDate ASC
             """)
